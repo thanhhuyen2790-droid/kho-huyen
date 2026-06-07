@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quản lý &amp; Điều phối nhân sự Kho</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --ink:#1e2433; --muted:#6b7385; --line:#e3e7f0;
+    --brand:#2f6df6; --brand-dk:#1f54cc; --ok:#19a974; --warn:#e8a200; --bad:#e0463e;
+    --okbg:#e7f7f0; --warnbg:#fdf3da; --badbg:#fce8e7; --chip:#eef2fb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:linear-gradient(135deg,#2f6df6,#1f54cc);color:#fff;padding:18px 22px}
+  header h1{margin:0;font-size:19px;font-weight:700}
+  header p{margin:4px 0 0;opacity:.85;font-size:12.5px}
+  nav{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--line);padding:0 14px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  nav button{border:0;background:none;padding:13px 16px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+  nav button.active{color:var(--brand);border-bottom-color:var(--brand)}
+  main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+  .tab{display:none}
+  .tab.active{display:block;animation:f .2s}
+  @keyframes f{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .card .sub{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px}
+  input,select{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+  input[type=checkbox]{width:auto}
+  input:focus,select:focus{outline:0;border-color:var(--brand)}
+  .btn{display:inline-flex;align-items:center;gap:6px;border:0;background:var(--brand);color:#fff;padding:9px 15px;border-radius:9px;font-weight:600;cursor:pointer;font-size:13px}
+  .btn:hover{background:var(--brand-dk)}
+  .btn.ghost{background:var(--chip);color:var(--brand)}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .btn.danger{background:var(--badbg);color:var(--bad)}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:150px}
+  label.fld{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700}
+  .b-ok{background:var(--okbg);color:var(--ok)}
+  .b-warn{background:var(--warnbg);color:var(--warn)}
+  .b-bad{background:var(--badbg);color:var(--bad)}
+  .b-normal{background:var(--chip);color:var(--muted)}
+  .b-mid{background:#e9e3fb;color:#6a45d6}
+  .b-peak{background:#ffe6d6;color:#d2691e}
+  .b-closed{background:#eceef2;color:#9aa1b1}
+  .daygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+  .day{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff}
+  .day.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
+  .day.warn{border-color:var(--warn)}
+  .day .dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+  .day .dh b{font-size:13.5px}
+  .metric{font-size:12px;color:var(--muted);margin:2px 0}
+  .metric b{color:var(--ink);font-size:13px}
+  .stafflist{margin:8px 0 0;padding:0;list-style:none;font-size:12.5px}
+  .stafflist li{padding:3px 0;border-top:1px dashed var(--line);display:flex;justify-content:space-between}
+  .sug{margin-top:8px;font-size:12px;padding:8px;border-radius:8px;background:var(--chip)}
+  .sug.bad{background:var(--badbg);color:#a3322c}
+  .sug.warn{background:var(--warnbg);color:#8a6500}
+  .fairbar{height:22px;border-radius:6px;background:linear-gradient(90deg,var(--brand),#6f9cff);color:#fff;font-size:11px;display:flex;align-items:center;padding:0 8px;min-width:30px;font-weight:600}
+  .schedgrid{overflow-x:auto}
+  .schedgrid table{min-width:760px}
+  .schedgrid td{text-align:center;padding:4px}
+  .schedgrid th{text-align:center}
+  .ca-cell{display:flex;gap:3px;justify-content:center}
+  .ca-cell label{display:flex;flex-direction:column;align-items:center;font-size:9.5px;color:var(--muted);cursor:pointer}
+  .pill{font-size:11px;color:var(--muted)}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .note{font-size:12px;color:var(--muted);background:var(--chip);padding:10px 12px;border-radius:9px}
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .kpi .box{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px}
+  .kpi .box .n{font-size:22px;font-weight:800}
+  .kpi .box .l{font-size:11.5px;color:var(--muted)}
+  .inline{display:flex;gap:6px;align-items:center}
+  small.hint{color:var(--muted);font-size:11px}
+  /* login + auth */
+  .overlay{position:fixed;inset:0;background:linear-gradient(135deg,#1f54cc,#2f6df6);display:flex;align-items:center;justify-content:center;z-index:100}
+  .login{background:#fff;border-radius:16px;padding:30px;width:340px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .login h2{margin:0 0 4px;font-size:20px}
+  .login p{margin:0 0 18px;color:var(--muted);font-size:13px}
+  .login input{margin-bottom:12px;font-size:16px;text-align:center;letter-spacing:2px}
+  .login .btn{width:100%;justify-content:center;padding:12px}
+  .login .err{color:var(--bad);font-size:12.5px;min-height:18px;text-align:center;margin-bottom:8px}
+  .login .roles{display:flex;gap:8px;margin-bottom:14px}
+  .login .roles button{flex:1;border:1px solid var(--line);background:#fff;border-radius:9px;padding:10px;cursor:pointer;font-weight:600;color:var(--muted)}
+  .login .roles button.on{border-color:var(--brand);background:var(--chip);color:var(--brand)}
+  .hdr-right{display:flex;align-items:center;gap:10px}
+  .rolechip{background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;font-size:12.5px;font-weight:600}
+  .logout{background:rgba(255,255,255,.15);border:0;color:#fff;padding:6px 13px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600}
+  .logout:hover{background:rgba(255,255,255,.28)}
+  .navbadge{display:inline-block;min-width:17px;height:17px;line-height:17px;text-align:center;background:var(--bad);color:#fff;border-radius:20px;font-size:10.5px;margin-left:5px;padding:0 4px}
+  .appcard{border:1px solid var(--line);border-radius:11px;padding:14px;margin-bottom:12px;background:#fff}
+  .appcard.head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .appcard .who{font-weight:700;font-size:14.5px}
+  .appcard .meta{color:var(--muted);font-size:12px;margin-top:2px}
+  .picklist{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .picktag{background:var(--chip);border-radius:7px;padding:4px 9px;font-size:12px}
+  .userwrap{max-width:760px}
+  .ok-banner{background:var(--okbg);color:var(--ok);padding:12px 14px;border-radius:10px;font-weight:600;margin-bottom:14px}
+</style>
+</head>
+<body>
+<!-- LOGIN -->
+<div class="overlay" id="overlay">
+  <div class="login">
+    <h2>🔐 Đăng nhập</h2>
+    <p>Chọn loại tài khoản và nhập mật khẩu.</p>
+    <div class="roles">
+      <button id="role-admin" class="on" onclick="pickRole('admin')">Quản lý (Admin)</button>
+      <button id="role-user" onclick="pickRole('user')">Nhân sự (User)</button>
+    </div>
+    <div class="err" id="loginErr"></div>
+    <input id="pw" type="password" placeholder="Mật khẩu" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn" onclick="doLogin()">Đăng nhập</button>
+  </div>
+</div>
+
+<header style="display:flex;justify-content:space-between;align-items:center">
+  <div>
+    <h1>📦 Quản lý &amp; Điều phối nhân sự Kho</h1>
+    <p>Tự tính số người cần mỗi ngày từ chỉ tiêu đơn · Phân bổ &amp; cân bằng ngày công · Cảnh báo thiếu/thừa</p>
+  </div>
+  <div class="hdr-right" id="hdrRight" style="display:none">
+    <span class="rolechip" id="connBadge" title="Trạng thái kết nối"></span>
+    <span class="rolechip" id="roleChip"></span>
+    <button class="logout" onclick="logout()">Đăng xuất</button>
+  </div>
+</header>
+<nav id="nav"></nav>
+<main>
+  <!-- TAB: NHÂN SỰ -->
+  <section class="tab" id="tab-staff">
+    <div class="card">
+      <h2>Bảng nhân sự</h2>
+      <p class="sub">Thêm/xoá nhân sự, đặt năng suất riêng (đơn/giờ). Mặc định 20 đơn/người/giờ.</p>
+      <div class="toolbar">
+        <input id="ns-name" placeholder="Tên nhân sự" style="max-width:200px">
+        <select id="ns-type" style="max-width:130px"><option value="FT">Full-time</option><option value="PT">Part-time</option></select>
+        <input id="ns-prod" type="number" value="20" min="1" style="max-width:130px" title="Năng suất đơn/giờ">
+        <button class="btn" onclick="addStaff()">+ Thêm</button>
+      </div>
+      <table>
+        <thead><tr><th>#</th><th>Tên</th><th>Loại</th><th>Năng suất (đơn/giờ)</th><th>Đang làm</th><th></th></tr></thead>
+        <tbody id="staffBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TAB: CHỈ TIÊU ĐƠN -->
+  <section class="tab" id="tab-demand">
+    <div class="card">
+      <h2>Chỉ tiêu đơn theo tháng</h2>
+      <p class="sub">Số đơn 1 <b>ngày thường</b> của mỗi sàn (đã nhập sẵn từ file 2026). Ngày 15&amp;25 ×2, ngày trùng (6.6, 7.7…) ×4 — có thể chỉnh.</p>
+      <div class="row">
+        <div><label class="fld">Tháng</label><select id="dm-month" onchange="renderDemand()"></select></div>
+        <div><label class="fld">Năm</label><input id="dm-year" type="number" value="2026" onchange="saveAll()"></div>
+      </div>
+      <table style="margin-top:12px">
+        <thead><tr><th>Sàn</th><th>Đơn/ngày thường</th></tr></thead>
+        <tbody id="demandBody"></tbody>
+      </table>
+      <div class="row" style="margin-top:14px">
+        <div><label class="fld">Hệ số ngày 15 &amp; 25</label><input id="dm-mid" type="number" step="0.1" onchange="saveAll();renderDemand()"></div>
+        <div><label class="fld">Hệ số ngày trùng (6.6…)</label><input id="dm-peak" type="number" step="0.1" onchange="saveAll();renderDemand()"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label class="fld">Ngày 15&amp;25 trong tháng</label><input id="dm-mid-dates" placeholder="15,25" onchange="saveAll();renderDemand()"></div>
+        <div><label class="fld">Ngày trùng (cách nhau dấu phẩy)</label><input id="dm-peak-dates" placeholder="VD: 6" onchange="saveAll();renderDemand()"></div>
+        <div><label class="fld">Ngày kho đóng cửa</label><input id="dm-closed-dates" placeholder="VD: 0 (để trống)" onchange="saveAll();renderDemand()"></div>
+      </div>
+      <div id="demandPreview" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <!-- TAB: ĐĂNG KÝ LỊCH -->
+  <section class="tab" id="tab-reg">
+    <!-- ADMIN: lưới đầy đủ + đã duyệt -->
+    <div class="card" id="reg-admin">
+      <h2>Đăng ký lịch làm việc theo tuần (đã duyệt)</h2>
+      <p class="sub">Lưới này là lịch <b>đã phê duyệt</b> và đang dùng để phân bổ. Admin có thể sửa trực tiếp. S = Sáng, C = Chiều, T = Tối.</p>
+      <div class="toolbar">
+        <label class="fld" style="margin:0">Tuần bắt đầu (Thứ Hai):</label>
+        <input id="reg-week" type="date" style="max-width:170px" onchange="loadWeek()">
+        <button class="btn ghost sm" onclick="shiftWeek(-7)">◀ Tuần trước</button>
+        <button class="btn ghost sm" onclick="shiftWeek(7)">Tuần sau ▶</button>
+        <button class="btn ghost sm" onclick="clearWeek()">Xoá đăng ký tuần</button>
+      </div>
+      <div class="schedgrid"><table id="regTable"></table></div>
+    </div>
+
+    <!-- USER: form đăng ký 1 người -->
+    <div class="card userwrap" id="reg-user" style="display:none">
+      <h2>Đăng ký lịch làm việc của bạn</h2>
+      <p class="sub">Chọn tên, tích ca muốn làm, rồi bấm <b>Xác nhận &amp; gửi duyệt</b>. Lịch chỉ được lưu sau khi quản lý phê duyệt.</p>
+      <div id="userBanner"></div>
+      <div class="row">
+        <div><label class="fld">Tôi là</label><select id="ureg-staff" onchange="renderUserReg()"></select></div>
+        <div><label class="fld">Tuần bắt đầu (Thứ Hai)</label><input id="ureg-week" type="date" onchange="renderUserReg()"></div>
+      </div>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="btn ghost sm" onclick="ushiftWeek(-7)">◀ Tuần trước</button>
+        <button class="btn ghost sm" onclick="ushiftWeek(7)">Tuần sau ▶</button>
+      </div>
+      <div class="schedgrid"><table id="uregTable"></table></div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn" onclick="submitUserReg()">✔ Xác nhận &amp; gửi duyệt</button>
+        <span class="pill" id=" uregStatus"></span>
+      </div>
+      <div id="uregStatusBox" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <!-- TAB: PHÊ DUYỆT (admin) -->
+  <section class="tab" id="tab-approve">
+    <div class="card">
+      <h2>Phê duyệt đăng ký lịch</h2>
+      <p class="sub">Các yêu cầu nhân sự gửi lên. Bấm <b>Phê duyệt</b> để lưu vào lịch (tab Đăng ký &amp; Phân bổ sẽ cập nhật). Bấm <b>Từ chối</b> để bỏ.</p>
+      <div id="approveList"></div>
+    </div>
+  </section>
+
+  <!-- TAB: PHÂN BỔ -->
+  <section class="tab" id="tab-plan">
+    <div class="card">
+      <h2>Phân bổ nhân sự &amp; cảnh báo</h2>
+      <p class="sub">Dựa trên chỉ tiêu đơn + đăng ký lịch của tuần đang chọn. Đỏ = thiếu người, Vàng = thừa người.</p>
+      <div class="kpi" id="planKpi"></div>
+      <div class="daygrid" id="planGrid"></div>
+    </div>
+    <div class="card">
+      <h2>⚖️ Cân bằng ngày công</h2>
+      <p class="sub">Tổng số ca được phân trong tuần của mỗi người — engine ưu tiên người ít ca trước để lương đồng đều.</p>
+      <div id="fairness"></div>
+    </div>
+  </section>
+
+  <!-- TAB: CÀI ĐẶT -->
+  <section class="tab" id="tab-config">
+    <div class="card">
+      <h2>Cài đặt &amp; dữ liệu</h2>
+      <p class="sub">Thông số chung của kho.</p>
+      <div class="row">
+        <div><label class="fld">Năng suất chuẩn (đơn/giờ)</label><input id="cf-prod" type="number" onchange="saveAll();renderAll()"></div>
+        <div><label class="fld">Số giờ mỗi ca</label><input id="cf-cah" type="number" step="0.5" onchange="saveAll();renderAll()"></div>
+        <div><label class="fld">Số ca = 1 ngày làm đầy đủ</label><input id="cf-fd" type="number" onchange="saveAll();renderAll()"></div>
+      </div>
+      <p class="note" style="margin-top:14px">Công thức: <b>Giờ công cần/ngày = Số đơn ÷ Năng suất chuẩn</b>. &nbsp; <b>Sức chứa 1 ca của 1 người = Số giờ/ca × Năng suất riêng</b>.</p>
+      <div class="toolbar" style="margin-top:16px">
+        <button class="btn" onclick="exportData()">⬇ Xuất dữ liệu (.json)</button>
+        <label class="btn ghost" style="cursor:pointer">⬆ Nhập dữ liệu<input type="file" accept=".json" onchange="importData(event)" hidden></label>
+        <button class="btn danger" onclick="if(confirm('Xoá toàn bộ dữ liệu và về mặc định?')){localStorage.removeItem(KEY);location.reload()}">Xoá tất cả</button>
+      </div>
+      <p class="note" style="margin-top:12px">Dữ liệu được lưu tự động ngay trên máy bạn (trình duyệt). Nên bấm <b>Xuất dữ liệu</b> định kỳ để sao lưu.</p>
+    </div>
+  </section>
+</main>
+
+<!-- Thư viện Supabase. Nếu mở offline, app tự chạy chế độ lưu cục bộ. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ================================================================
+   CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
+   Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
+   ================================================================ */
+const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
+
+const KEY='khoHuyenV1';
+const CA=['Sáng','Chiều','Tối'];
+const CASHORT={'Sáng':'S','Chiều':'C','Tối':'T'};
+const DOW=['Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy','Chủ Nhật'];
+// Đơn/ngày thường theo tháng, lấy từ file "Đặt sản xuất - Note 2026"
+const DEF_SHOPEE=[299.9,293.7,221.9,202.7,287.8,340.9,517.8,1124.7,459.9,215.3,162.0,294.8];
+const DEF_TIKTOK=[116.6,114.2,86.3,78.8,111.9,132.6,201.4,437.4,178.9,83.7,63.0,114.6];
+const DEF_LAZADA=Array(12).fill(10);
+
+function defaultState(){
+  return {
+    config:{prod:20,caHours:4,fullDay:2},
+    staff:[
+      {id:id(),name:'Hằng',type:'FT',prod:20,active:true},
+      {id:id(),name:'Thảo',type:'FT',prod:24,active:true},
+      {id:id(),name:'Hiếu',type:'FT',prod:20,active:true},
+      {id:id(),name:'Quang Minh',type:'PT',prod:18,active:true},
+      {id:id(),name:'Bùi P.Anh',type:'PT',prod:20,active:true},
+    ],
+    demand:{
+      year:2026, month:(new Date()).getMonth()+1,
+      base:{shopee:[...DEF_SHOPEE],tiktok:[...DEF_TIKTOK],lazada:[...DEF_LAZADA]},
+      mult:{mid:2,peak:4},
+      midDates:'15,25', peakDates:'', closedDates:''
+    },
+    reg:{}, // { 'YYYY-MM-DD': { staffId: ['Sáng',...] } } — chỉ chứa lịch ĐÃ DUYỆT
+    pending:[] // yêu cầu nhân sự gửi chờ duyệt
+  };
+}
+let S=load();
+function id(){return 'x'+Math.random().toString(36).slice(2,9)}
+function load(){try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);if(!o.pending)o.pending=[];return o}}catch(e){}return defaultState()}
+function saveAll(){pullConfig();pullDemand();localStorage.setItem(KEY,JSON.stringify(S));cloudSave();}
+function pullConfig(){
+  const g=i=>document.getElementById(i);
+  if(g('cf-prod')) S.config.prod=+g('cf-prod').value||20;
+  if(g('cf-cah')) S.config.caHours=+g('cf-cah').value||4;
+  if(g('cf-fd')) S.config.fullDay=+g('cf-fd').value||2;
+}
+function pullDemand(){
+  const g=i=>document.getElementById(i);
+  if(g('dm-year')) S.demand.year=+g('dm-year').value||2026;
+  if(g('dm-mid')) S.demand.mult.mid=+g('dm-mid').value||2;
+  if(g('dm-peak')) S.demand.mult.peak=+g('dm-peak').value||4;
+  if(g('dm-mid-dates')) S.demand.midDates=g('dm-mid-dates').value;
+  if(g('dm-peak-dates')) S.demand.peakDates=g('dm-peak-dates').value;
+  if(g('dm-closed-dates')) S.demand.closedDates=g('dm-closed-dates').value;
+}
+
+/* ---------- CLOUD (Supabase) ---------- */
+let sb=null, cloudMode=false, CLIENT_ID='c'+Math.random().toString(36).slice(2,10), curTab=null, saveTimer=null;
+async function initCloud(){
+  if(!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)){cloudMode=false;return;}
+  try{
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    cloudMode=true;
+    const {data,error}=await sb.from('app_state').select('data').eq('id','main').maybeSingle();
+    if(error)throw error;
+    if(data&&data.data){S=data.data; if(!S.pending)S.pending=[]; localStorage.setItem(KEY,JSON.stringify(S));}
+    else{ await sb.from('app_state').upsert({id:'main',data:S,client_id:CLIENT_ID,updated_at:new Date().toISOString()}); }
+    sb.channel('app_state_ch')
+      .on('postgres_changes',{event:'*',schema:'public',table:'app_state',filter:'id=eq.main'},payload=>{
+        const row=payload.new; if(!row||!row.data) return;
+        if(row.client_id===CLIENT_ID) return; // bỏ qua thay đổi của chính thiết bị này
+        S=row.data; if(!S.pending)S.pending=[];
+        localStorage.setItem(KEY,JSON.stringify(S));
+        applyRemote();
+      }).subscribe();
+  }catch(e){ console.warn('Không kết nối được cloud, dùng lưu cục bộ:',e); cloudMode=false; }
+}
+function cloudSave(){
+  if(!cloudMode||!sb)return;
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    try{ await sb.from('app_state').upsert({id:'main',data:S,client_id:CLIENT_ID,updated_at:new Date().toISOString()}); }
+    catch(e){ console.warn('Lưu cloud lỗi:',e); }
+  },500);
+}
+function applyRemote(){
+  if(!role)return; // chưa đăng nhập thì sẽ tự nạp khi vào
+  renderAll();
+  if(curTab){const b=document.querySelector('#nav button[data-t="'+curTab+'"]'); if(b)go(curTab,b);}
+}
+function setConnBadge(){
+  const b=document.getElementById('connBadge'); if(!b)return;
+  b.textContent=cloudMode?'☁️ Cloud':'💾 Cục bộ';
+  b.style.background=cloudMode?'rgba(25,169,116,.35)':'rgba(255,255,255,.15)';
+}
+
+/* ---------- AUTH ---------- */
+const PW={admin:'204290',user:'123456'};
+let role=null, loginRole='admin';
+function pickRole(r){
+  loginRole=r;
+  document.getElementById('role-admin').classList.toggle('on',r==='admin');
+  document.getElementById('role-user').classList.toggle('on',r==='user');
+  document.getElementById('loginErr').textContent='';
+  document.getElementById('pw').focus();
+}
+function doLogin(){
+  const pw=document.getElementById('pw').value;
+  if(pw===PW[loginRole]){role=loginRole;try{sessionStorage.setItem('khoRole',role)}catch(e){}startApp();}
+  else document.getElementById('loginErr').textContent='Sai mật khẩu, thử lại.';
+}
+function logout(){
+  role=null;try{sessionStorage.removeItem('khoRole')}catch(e){}
+  document.getElementById('pw').value='';
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('hdrRight').style.display='none';
+  document.getElementById('pw').focus();
+}
+function startApp(){
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('hdrRight').style.display='flex';
+  document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)';
+  setConnBadge();
+  buildNav();renderAll();
+  const first=role==='admin'?'staff':'reg';
+  const btn=document.querySelector('#nav button[data-t="'+first+'"]');
+  if(btn)go(first,btn);
+}
+
+/* ---------- NAV ---------- */
+const ALL_TABS=[
+  ['staff','👥 Nhân sự','admin'],
+  ['demand','🎯 Chỉ tiêu đơn','admin'],
+  ['reg','🗓️ Đăng ký lịch','both'],
+  ['approve','✅ Phê duyệt','admin'],
+  ['plan','⚙️ Phân bổ & Cảnh báo','admin'],
+  ['config','🛠️ Cài đặt','admin'],
+];
+function visibleTabs(){return ALL_TABS.filter(t=>t[2]==='both'||t[2]===role)}
+function buildNav(){
+  const n=document.getElementById('nav');
+  n.innerHTML=visibleTabs().map((t,i)=>{
+    const badge=t[0]==='approve'?`<span class="navbadge" id="pendBadge" style="display:none"></span>`:'';
+    return `<button data-t="${t[0]}" onclick="go('${t[0]}',this)">${t[1]}${badge}</button>`;
+  }).join('');
+  updateNavBadge();
+}
+function pendingCount(){return S.pending.filter(p=>p.status==='pending').length}
+function updateNavBadge(){
+  const b=document.getElementById('pendBadge');if(!b)return;
+  const c=pendingCount();
+  if(c>0){b.textContent=c;b.style.display='inline-block'}else b.style.display='none';
+}
+function go(t,btn){
+  curTab=t;
+  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(t==='plan')renderPlan();
+  if(t==='reg')renderReg();
+  if(t==='approve')renderApprove();
+  if(t==='demand')renderDemand();
+}
+
+/* ---------- STAFF ---------- */
+function addStaff(){
+  const name=document.getElementById('ns-name').value.trim();
+  if(!name)return alert('Nhập tên nhân sự');
+  S.staff.push({id:id(),name,type:document.getElementById('ns-type').value,prod:+document.getElementById('ns-prod').value||20,active:true});
+  document.getElementById('ns-name').value='';
+  saveAll();renderStaff();
+}
+function delStaff(i){if(confirm('Xoá nhân sự này?')){S.staff.splice(i,1);saveAll();renderStaff();renderRegTable()}}
+function renderStaff(){
+  const b=document.getElementById('staffBody');
+  b.innerHTML=S.staff.map((s,i)=>`<tr>
+    <td>${i+1}</td>
+    <td><input value="${esc(s.name)}" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable()"></td>
+    <td><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${s.type==='FT'?'selected':''}>FT</option><option ${s.type==='PT'?'selected':''}>PT</option></select></td>
+    <td><input type="number" value="${s.prod}" min="1" onchange="S.staff[${i}].prod=+this.value;saveAll()"></td>
+    <td style="text-align:center"><input type="checkbox" ${s.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll()"></td>
+    <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
+  </tr>`).join('');
+}
+
+/* ---------- DEMAND ---------- */
+function fillMonthSelect(){
+  const m=document.getElementById('dm-month');
+  m.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i+1}" ${S.demand.month===i+1?'selected':''}>Tháng ${i+1}</option>`).join('');
+}
+function renderDemand(){
+  S.demand.month=+document.getElementById('dm-month').value;
+  const mi=S.demand.month-1;
+  document.getElementById('dm-year').value=S.demand.year;
+  document.getElementById('dm-mid').value=S.demand.mult.mid;
+  document.getElementById('dm-peak').value=S.demand.mult.peak;
+  document.getElementById('dm-mid-dates').value=S.demand.midDates;
+  document.getElementById('dm-peak-dates').value=S.demand.peakDates;
+  document.getElementById('dm-closed-dates').value=S.demand.closedDates;
+  const plats=[['shopee','Shopee'],['tiktok','Tiktok'],['lazada','Lazada']];
+  document.getElementById('demandBody').innerHTML=plats.map(p=>`<tr>
+    <td>${p[1]}</td>
+    <td><input type="number" step="0.1" value="${(S.demand.base[p[0]][mi]).toFixed(1)}" onchange="S.demand.base['${p[0]}'][${mi}]=+this.value;saveAll();renderDemand()"></td>
+  </tr>`).join('');
+  // preview
+  const normal=plats.reduce((a,p)=>a+S.demand.base[p[0]][mi],0);
+  const mid=normal*S.demand.mult.mid, peak=normal*S.demand.mult.peak;
+  const need=o=>peopleNeeded(o);
+  document.getElementById('demandPreview').innerHTML=`
+    <div class="kpi">
+      <div class="box"><div class="l">Ngày thường — tổng đơn</div><div class="n">${Math.round(normal)}</div><div class="l">≈ ${need(normal)} người cả ngày</div></div>
+      <div class="box"><div class="l">Ngày 15 & 25 (×${S.demand.mult.mid})</div><div class="n">${Math.round(mid)}</div><div class="l">≈ ${need(mid)} người cả ngày</div></div>
+      <div class="box"><div class="l">Ngày trùng (×${S.demand.mult.peak})</div><div class="n">${Math.round(peak)}</div><div class="l">≈ ${need(peak)} người cả ngày</div></div>
+    </div>`;
+}
+// số người làm cả ngày cần để chạy hết o đơn
+function peopleNeeded(o){
+  const cap=S.config.caHours*S.config.fullDay*S.config.prod; // 1 người cả ngày
+  return Math.ceil(o/cap);
+}
+
+/* ---------- DATE HELPERS ---------- */
+function fmt(d){return d.toISOString().slice(0,10)}
+function parse(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)}
+function mondayOf(d){const x=new Date(d);const g=(x.getDay()+6)%7;x.setDate(x.getDate()-g);return x}
+function weekDates(){
+  const w=document.getElementById('reg-week').value; if(!w)return[];
+  const m=parse(w); return Array.from({length:7},(_,i)=>{const d=new Date(m);d.setDate(d.getDate()+i);return d});
+}
+function dayType(d){
+  // chỉ áp dụng hệ số theo cấu hình tháng đang chọn (so khớp ngày trong tháng)
+  const day=d.getDate();
+  const inList=(str)=>str.split(',').map(s=>+s.trim()).filter(Boolean).includes(day);
+  if(inList(S.demand.closedDates))return 'closed';
+  if(inList(S.demand.peakDates))return 'peak';
+  if(inList(S.demand.midDates))return 'mid';
+  return 'normal';
+}
+function ordersOn(d){
+  if(d.getMonth()+1!==S.demand.month)return null; // ngày ngoài tháng đang cấu hình
+  const t=dayType(d); if(t==='closed')return 0;
+  const mi=S.demand.month-1;
+  const base=S.demand.base.shopee[mi]+S.demand.base.tiktok[mi]+S.demand.base.lazada[mi];
+  const f=t==='peak'?S.demand.mult.peak:t==='mid'?S.demand.mult.mid:1;
+  return base*f;
+}
+
+/* ---------- REGISTRATION ---------- */
+function defaultWeek(){
+  if(!document.getElementById('reg-week').value){
+    document.getElementById('reg-week').value=fmt(mondayOf(new Date()));
+  }
+}
+function shiftWeek(n){
+  const c=document.getElementById('reg-week');
+  const d=parse(c.value); d.setDate(d.getDate()+n); c.value=fmt(d); loadWeek();
+}
+function loadWeek(){renderRegTable();}
+function clearWeek(){
+  if(!confirm('Xoá toàn bộ đăng ký của tuần này?'))return;
+  weekDates().forEach(d=>delete S.reg[fmt(d)]); saveAll(); renderRegTable();
+}
+function toggleReg(sid,ds,ca,on){
+  S.reg[ds]=S.reg[ds]||{}; S.reg[ds][sid]=S.reg[ds][sid]||[];
+  const arr=S.reg[ds][sid];
+  if(on){if(!arr.includes(ca))arr.push(ca)} else {S.reg[ds][sid]=arr.filter(c=>c!==ca)}
+  if(S.reg[ds][sid].length===0)delete S.reg[ds][sid];
+  saveAll();
+}
+function renderRegTable(){
+  defaultWeek();
+  const dates=weekDates(); const act=S.staff.filter(s=>s.active);
+  const head=`<thead><tr><th style="text-align:left">Nhân sự</th>${dates.map((d,i)=>`<th>${DOW[i].replace('Thứ ','T')}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
+  const body=act.map(s=>`<tr><td style="text-align:left;font-weight:600">${esc(s.name)} <small class="hint">${s.type}</small></td>${dates.map(d=>{
+    const ds=fmt(d); const reg=(S.reg[ds]&&S.reg[ds][s.id])||[];
+    return `<td><div class="ca-cell">${CA.map(c=>`<label title="${c}"><input type="checkbox" ${reg.includes(c)?'checked':''} onchange="toggleReg('${s.id}','${ds}','${c}',this.checked)">${CASHORT[c]}</label>`).join('')}</div></td>`;
+  }).join('')}</tr>`).join('');
+  document.getElementById('regTable').innerHTML=head+'<tbody>'+body+'</tbody>';
+}
+
+/* ---------- REG: chuyển admin/user ---------- */
+function renderReg(){
+  const isAdmin=role==='admin';
+  document.getElementById('reg-admin').style.display=isAdmin?'':'none';
+  document.getElementById('reg-user').style.display=isAdmin?'none':'';
+  if(isAdmin)renderRegTable(); else renderUserReg();
+}
+
+/* ---------- USER: đăng ký 1 người ---------- */
+let userDraft={}; // {date:[ca]}
+function populateUserStaff(){
+  const sel=document.getElementById('ureg-staff');if(!sel)return;
+  const act=S.staff.filter(s=>s.active);
+  const cur=sel.value;
+  sel.innerHTML=act.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  if(cur&&act.find(s=>s.id===cur))sel.value=cur;
+  if(!document.getElementById('ureg-week').value)
+    document.getElementById('ureg-week').value=fmt(mondayOf(new Date()));
+}
+function uWeekDates(){
+  const w=document.getElementById('ureg-week').value;if(!w)return[];
+  const m=parse(w);return Array.from({length:7},(_,i)=>{const d=new Date(m);d.setDate(d.getDate()+i);return d});
+}
+function ushiftWeek(n){
+  const c=document.getElementById('ureg-week');const d=parse(c.value);d.setDate(d.getDate()+n);c.value=fmt(d);renderUserReg();
+}
+function loadDraftFor(sid,dates){
+  // ưu tiên: bản pending gần nhất của người này cho tuần này; nếu không có thì lấy lịch đã duyệt
+  userDraft={};
+  const ws=document.getElementById('ureg-week').value;
+  const pend=[...S.pending].reverse().find(p=>p.staffId===sid&&p.weekStart===ws&&p.status==='pending');
+  if(pend){userDraft=JSON.parse(JSON.stringify(pend.picks));return}
+  dates.forEach(d=>{const ds=fmt(d);const a=(S.reg[ds]&&S.reg[ds][sid])||[];if(a.length)userDraft[ds]=[...a]});
+}
+function utoggle(ds,ca,on){
+  userDraft[ds]=userDraft[ds]||[];
+  if(on){if(!userDraft[ds].includes(ca))userDraft[ds].push(ca)}
+  else userDraft[ds]=userDraft[ds].filter(c=>c!==ca);
+  if(userDraft[ds].length===0)delete userDraft[ds];
+}
+function renderUserReg(){
+  populateUserStaff();
+  const sid=document.getElementById('ureg-staff').value;
+  const dates=uWeekDates();
+  loadDraftFor(sid,dates);
+  // banner trạng thái
+  const ws=document.getElementById('ureg-week').value;
+  const mine=S.pending.filter(p=>p.staffId===sid&&p.weekStart===ws);
+  const lastP=[...mine].reverse()[0];
+  let banner='';
+  if(lastP&&lastP.status==='pending')banner=`<div class="ok-banner" style="background:var(--warnbg);color:#8a6500">⏳ Bạn đã gửi đăng ký tuần này, đang chờ quản lý phê duyệt. Có thể sửa và gửi lại.</div>`;
+  else if(lastP&&lastP.status==='approved')banner=`<div class="ok-banner">✔ Đăng ký tuần này đã được phê duyệt.</div>`;
+  document.getElementById('userBanner').innerHTML=banner;
+  // grid
+  const head=`<thead><tr>${dates.map((d,i)=>`<th>${DOW[i].replace('Thứ ','T')}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
+  const row=`<tr>${dates.map(d=>{const ds=fmt(d);const pk=userDraft[ds]||[];
+    return `<td><div class="ca-cell">${CA.map(c=>`<label title="${c}"><input type="checkbox" ${pk.includes(c)?'checked':''} onchange="utoggle('${ds}','${c}',this.checked)">${CASHORT[c]}</label>`).join('')}</div></td>`;
+  }).join('')}</tr>`;
+  document.getElementById('uregTable').innerHTML=head+'<tbody>'+row+'</tbody>';
+  // lịch sử gửi
+  const box=document.getElementById('uregStatusBox');
+  const all=S.pending.filter(p=>p.staffId===sid).sort((a,b)=>b.submittedAt-a.submittedAt).slice(0,5);
+  box.innerHTML=all.length?'<p class="sub" style="margin:0 0 8px">Lịch sử gửi gần đây:</p>'+all.map(p=>{
+    const st={pending:['b-warn','Chờ duyệt'],approved:['b-ok','Đã duyệt'],rejected:['b-bad','Bị từ chối']}[p.status];
+    return `<div class="appcard"><div class="appcard head"><div><div class="meta">Tuần ${weekLabel(p.weekStart)}</div></div><span class="badge ${st[0]}">${st[1]}</span></div><div class="picklist">${pickTags(p.picks)}</div></div>`;
+  }).join(''):'';
+}
+function weekLabel(ws){const d=parse(ws);const e=new Date(d);e.setDate(e.getDate()+6);return `${d.getDate()}/${d.getMonth()+1} – ${e.getDate()}/${e.getMonth()+1}`;}
+function pickTags(picks){
+  const keys=Object.keys(picks).sort();
+  if(!keys.length)return '<span class="pill">(không có ca nào)</span>';
+  return keys.map(ds=>{const d=parse(ds);return `<span class="picktag"><b>${d.getDate()}/${d.getMonth()+1}</b>: ${picks[ds].map(c=>CASHORT[c]).join('+')}</span>`}).join('');
+}
+function submitUserReg(){
+  const sel=document.getElementById('ureg-staff');const sid=sel.value;
+  const sname=(S.staff.find(s=>s.id===sid)||{}).name||'';
+  if(Object.keys(userDraft).length===0)return alert('Bạn chưa tích ca nào. Hãy chọn ít nhất 1 ca trước khi gửi.');
+  const ws=document.getElementById('ureg-week').value;
+  // bỏ pending cũ cùng người+tuần (thay bằng bản mới)
+  S.pending=S.pending.filter(p=>!(p.staffId===sid&&p.weekStart===ws&&p.status==='pending'));
+  S.pending.push({id:id(),staffId:sid,staffName:sname,weekStart:ws,picks:JSON.parse(JSON.stringify(userDraft)),submittedAt:Date.now(),status:'pending'});
+  saveAll();updateNavBadge();
+  document.getElementById('userBanner').innerHTML=`<div class="ok-banner">✅ Đã gửi đăng ký cho tuần ${weekLabel(ws)} tới quản lý. Chờ phê duyệt nhé!</div>`;
+  renderUserReg();
+}
+
+/* ---------- ADMIN: phê duyệt ---------- */
+function renderApprove(){
+  const list=S.pending.filter(p=>p.status==='pending').sort((a,b)=>a.submittedAt-b.submittedAt);
+  const box=document.getElementById('approveList');
+  if(!list.length){box.innerHTML='<p class="note">Không có yêu cầu nào đang chờ. 🎉</p>';updateNavBadge();return}
+  box.innerHTML=list.map(p=>{
+    const t=new Date(p.submittedAt);
+    return `<div class="appcard">
+      <div class="appcard head">
+        <div><div class="who">${esc(p.staffName)}</div><div class="meta">Tuần ${weekLabel(p.weekStart)} · gửi ${t.getDate()}/${t.getMonth()+1} ${('0'+t.getHours()).slice(-2)}:${('0'+t.getMinutes()).slice(-2)}</div></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn sm" onclick="approveSub('${p.id}')">✔ Phê duyệt</button>
+          <button class="btn danger sm" onclick="rejectSub('${p.id}')">✕ Từ chối</button>
+        </div>
+      </div>
+      <div class="picklist">${pickTags(p.picks)}</div>
+    </div>`;
+  }).join('');
+  updateNavBadge();
+}
+function approveSub(pid){
+  const p=S.pending.find(x=>x.id===pid);if(!p)return;
+  for(const ds in p.picks){
+    S.reg[ds]=S.reg[ds]||{};
+    if(p.picks[ds]&&p.picks[ds].length)S.reg[ds][p.staffId]=[...p.picks[ds]];
+    else if(S.reg[ds])delete S.reg[ds][p.staffId];
+  }
+  p.status='approved';p.approvedAt=Date.now();
+  saveAll();renderApprove();renderRegTable();updateNavBadge();
+}
+function rejectSub(pid){
+  const p=S.pending.find(x=>x.id===pid);if(!p)return;
+  if(!confirm('Từ chối yêu cầu của '+p.staffName+'?'))return;
+  p.status='rejected';saveAll();renderApprove();updateNavBadge();
+}
+
+/* ---------- ALLOCATION ENGINE ---------- */
+function planWeek(){
+  const dates=weekDates();
+  const acc={}; S.staff.forEach(s=>acc[s.id]=0); // ca tích luỹ trong tuần (cân bằng)
+  const result=[];
+  for(const d of dates){
+    const ds=fmt(d);
+    const orders=ordersOn(d);
+    const caHours=S.config.caHours, prodRef=S.config.prod;
+    // build slots from registrations
+    let slots=[];
+    const reg=S.reg[ds]||{};
+    for(const sid in reg){
+      const st=S.staff.find(x=>x.id===sid); if(!st||!st.active)continue;
+      reg[sid].forEach(ca=>slots.push({sid,name:st.name,ca,cap:caHours*st.prod}));
+    }
+    const totalCap=slots.reduce((a,s)=>a+s.cap,0);
+    let info;
+    if(orders===null){
+      info={ds,d,skip:true};
+    } else {
+      const need=orders;
+      // sort: ít ca tích luỹ trước (công bằng), rồi năng suất cao trước (ít đầu người ngày đông)
+      slots.sort((a,b)=> (acc[a.sid]-acc[b.sid]) || (b.cap-a.cap));
+      let cum=0; const assigned=[]; const unused=[];
+      for(const sl of slots){
+        if(cum<need){assigned.push(sl);cum+=sl.cap;acc[sl.sid]++;}
+        else unused.push(sl);
+      }
+      const reqPeople=peopleNeeded(orders);
+      const deficit=Math.max(0,need-totalCap);
+      let status='ok';
+      if(deficit>0)status='bad';
+      else if(unused.length>0)status='warn';
+      // suggestions
+      let sug='';
+      const fullDayCap=caHours*S.config.fullDay*prodRef;
+      if(status==='bad'){
+        const more=Math.ceil(deficit/(caHours*prodRef)); // số ca thiếu
+        const morePeople=Math.ceil(deficit/fullDayCap);
+        const free=S.staff.filter(s=>s.active && !(reg[s.id]&&reg[s.id].length))
+                    .sort((a,b)=>acc[a.id]-acc[b.id]).slice(0,morePeople||1);
+        sug=`Thiếu ~${Math.round(deficit)} đơn (≈ ${more} ca / ${morePeople} người cả ngày). `+
+            (free.length?`Đề xuất gọi thêm: <b>${free.map(s=>s.name).join(', ')}</b> (đang ít ca nhất).`:`Tất cả nhân sự đã kín — cần tuyển/tăng ca.`);
+      } else if(status==='warn'){
+        // người có toàn bộ ca không dùng -> có thể cho nghỉ
+        const bySid={}; unused.forEach(u=>{bySid[u.sid]=(bySid[u.sid]||0)+1});
+        const usedSid={}; assigned.forEach(a=>usedSid[a.sid]=1);
+        const droppable=Object.keys(bySid).filter(sid=>!usedSid[sid])
+                          .map(sid=>S.staff.find(s=>s.id===sid))
+                          .sort((a,b)=>acc[b.id]-acc[a.id]);
+        const extra=Math.round(totalCap-need);
+        sug=`Thừa ~${extra} đơn năng lực (${unused.length} ca không dùng). `+
+            (droppable.length?`Có thể cho nghỉ: <b>${droppable.map(s=>s.name).join(', ')}</b> (đang nhiều ca nhất) để cân bằng.`:`Mọi người đều có việc — chỉ dư nhẹ.`);
+      } else {
+        sug='Khớp nhu cầu. ✔';
+      }
+      info={ds,d,orders,type:dayType(d),reqPeople,totalCap,need,assigned,unused,status,sug,cumCovered:cum};
+    }
+    result.push(info);
+  }
+  return {result,acc};
+}
+
+function renderPlan(){
+  defaultWeek();
+  if(weekDates().length && weekDates()[0].getMonth()+1!==S.demand.month){
+    // nhắc người dùng tuần không thuộc tháng cấu hình
+  }
+  const {result,acc}=planWeek();
+  const days=result.filter(r=>!r.skip);
+  const bad=days.filter(r=>r.status==='bad').length;
+  const warn=days.filter(r=>r.status==='warn').length;
+  const ok=days.filter(r=>r.status==='ok').length;
+  const totOrders=days.reduce((a,r)=>a+(r.orders||0),0);
+  document.getElementById('planKpi').innerHTML=`
+    <div class="box"><div class="l">Tổng đơn tuần (thuộc Tháng ${S.demand.month})</div><div class="n">${Math.round(totOrders)}</div></div>
+    <div class="box"><div class="l">Ngày khớp</div><div class="n" style="color:var(--ok)">${ok}</div></div>
+    <div class="box"><div class="l">Ngày thiếu người</div><div class="n" style="color:var(--bad)">${bad}</div></div>
+    <div class="box"><div class="l">Ngày thừa người</div><div class="n" style="color:var(--warn)">${warn}</div></div>`;
+
+  document.getElementById('planGrid').innerHTML=result.map((r,i)=>{
+    if(r.skip)return `<div class="day"><div class="dh"><b>${DOW[i]}</b><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span></div><div class="metric" style="color:var(--muted)">Ngoài Tháng ${S.demand.month} — đổi tháng ở tab Chỉ tiêu để xem.</div></div>`;
+    const tb={normal:['b-normal','Ngày thường'],mid:['b-mid','Ngày 15&25'],peak:['b-peak','Ngày trùng'],closed:['b-closed','Đóng cửa']}[r.type];
+    const sb={ok:'b-ok',warn:'b-warn',bad:'b-bad'}[r.status];
+    const st={ok:'KHỚP',warn:'THỪA',bad:'THIẾU'}[r.status];
+    const assignedBy={};
+    r.assigned.forEach(a=>{assignedBy[a.name]=(assignedBy[a.name]||[]);assignedBy[a.name].push(CASHORT[a.ca])});
+    const li=Object.keys(assignedBy).map(n=>`<li><span>${esc(n)}</span><span class="pill">${assignedBy[n].join('+')}</span></li>`).join('')||'<li><span class="pill">Chưa ai được phân</span></li>';
+    return `<div class="day ${r.status}">
+      <div class="dh"><b>${DOW[i]}</b><span class="badge ${tb[0]}">${tb[1]}</span></div>
+      <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
+      <div class="metric">Đơn: <b>${Math.round(r.orders)}</b> · Cần ≈ <b>${r.reqPeople}</b> người cả ngày</div>
+      <div class="metric">Năng lực đăng ký: <b>${Math.round(r.totalCap)}</b> đơn</div>
+      <ul class="stafflist">${li}</ul>
+      <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
+    </div>`;
+  }).join('');
+
+  // fairness across all active staff (whole week)
+  const act=S.staff.filter(s=>s.active);
+  const max=Math.max(1,...act.map(s=>acc[s.id]||0));
+  const vals=act.map(s=>acc[s.id]||0);
+  const gap=(Math.max(...vals,0)-Math.min(...vals,0));
+  document.getElementById('fairness').innerHTML=
+    (gap>=3?`<div class="sug warn" style="margin-bottom:10px">⚠️ Chênh lệch ngày công lớn (${gap} ca giữa người nhiều nhất và ít nhất). Cân nhắc điều chỉnh đăng ký để đồng đều lương.</div>`:'')+
+    `<table><thead><tr><th>Nhân sự</th><th>Số ca được phân / tuần</th><th style="width:55%"></th></tr></thead><tbody>`+
+    act.map(s=>{const v=acc[s.id]||0;return `<tr><td>${esc(s.name)}</td><td>${v}</td><td><div class="fairbar" style="width:${Math.max(8,v/max*100)}%">${v}</div></td></tr>`}).join('')+
+    `</tbody></table>`;
+}
+
+/* ---------- IMPORT/EXPORT ---------- */
+function exportData(){
+  saveAll();
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='kho-du-lieu-'+fmt(new Date())+'.json';a.click();
+}
+function importData(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=()=>{try{S=JSON.parse(r.result);if(!S.pending)S.pending=[];saveAll();renderAll();alert('Đã nhập dữ liệu.')}catch(err){alert('File không hợp lệ.')}};r.readAsText(f);
+}
+
+/* ---------- INIT ---------- */
+function esc(s){return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function renderAll(){
+  document.getElementById('cf-prod').value=S.config.prod;
+  document.getElementById('cf-cah').value=S.config.caHours;
+  document.getElementById('cf-fd').value=S.config.fullDay;
+  fillMonthSelect();renderStaff();renderDemand();
+  populateUserStaff();renderReg();updateNavBadge();
+}
+// nạp dữ liệu cloud (nếu có) rồi mở app
+(async function boot(){
+  await initCloud();
+  let saved=null;try{saved=sessionStorage.getItem('khoRole')}catch(e){}
+  if(saved&&PW[saved]){role=saved;startApp();}
+  else{document.getElementById('overlay').style.display='flex';document.getElementById('pw').focus();}
+})();
+</script>
+</body>
+</html>
