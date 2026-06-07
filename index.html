@@ -960,6 +960,12 @@ function rejectSub(pid){
 
 /* ---------- ALLOCATION ENGINE ---------- */
 function stageName(k){const s=S.stages.find(x=>x.key===k);return s?s.name:k;}
+// khâu cần ưu tiên xử lý: ưu tiên khâu chưa phủ đủ, trong đó chọn khâu kỹ năng team thấp nhất
+function weakestStage(cov){
+  const under=S.stages.filter(s=>(cov.coverage[s.key]||0)<0.999);
+  const pool=under.length?under:S.stages.slice();
+  return pool.reduce((m,s)=>(cov.stageSkill[s.key]||0)<(cov.stageSkill[m.key]||0)?s:m, pool[0]);
+}
 function planWeek(){
   const dates=datesOfWeek(document.getElementById('plan-week').value);
   const acc={}; S.staff.forEach(s=>acc[s.id]=0); // số ca làm trong tuần (cân bằng)
@@ -969,13 +975,26 @@ function planWeek(){
     const ds=fmt(d), t=dayType(d), orders=ordersOn(d);
     const pool=dayPeople(ds);
     const sel=selectTeam(orders,pool,acc,w);
-    const status={closed:'closed',ok:'ok',surplus:'warn',short_people:'bad',short_skill:'bad'}[sel.status];
+    // viền/màu: thiếu người = đỏ; thừa hoặc lệch kỹ năng = vàng (cảnh báo); đủ = xanh
+    const status={closed:'closed',ok:'ok',surplus:'warn',short_people:'bad',short_skill:'warn'}[sel.status];
     // cộng ngày công cho người được chọn làm
     const used=new Set();
     sel.selected.forEach(p=>{ used.add(p.id); acc[p.id]+=p.cas; });
     result.push({ds,d,type:t,orders,sel,status,reqPeople:peopleNeeded(orders),used,sug:buildDaySug(d,t,orders,pool,sel,acc)});
   }
   return {result,acc};
+}
+// tiêu đề: chỉ đủ/thiếu/thừa NGƯỜI, kèm ngoặc số lượng
+function headcountText(r){
+  if(r.type==='closed')return {cls:'b-closed',text:'NGHỈ'};
+  const sel=r.sel;
+  if(sel.status==='short_people'){
+    const deficit=Math.max(0,r.orders-sel.capacity);
+    const more=Math.max(1,Math.ceil(deficit/(avgProd()*S.config.caHours*S.config.fullDay)));
+    return {cls:'b-bad',text:`Thiếu người (cần thêm ~${more})`};
+  }
+  if(sel.status==='surplus')return {cls:'b-warn',text:`Thừa người (dư ${sel.rest.length})`};
+  return {cls:'b-ok',text:'Đủ người'};
 }
 function buildDaySug(d,t,orders,pool,sel,acc){
   if(t==='closed')return 'Kho đóng cửa.';
@@ -986,23 +1005,25 @@ function buildDaySug(d,t,orders,pool,sel,acc){
     return `Thừa người — chỉ cần <b>${sel.selected.length}</b>, đăng ký <b>${pool.length}</b>. Có thể cho nghỉ: <b>${rest.map(p=>p.name).join(', ')}</b> (ưu tiên người đang nhiều ngày công).`;
   }
   if(sel.status==='short_skill'){
+    // khâu hoàn toàn chưa ai làm được
     if(cov.skillGap.length){
       const recs=cov.skillGap.map(k=>{
         const cand=S.staff.filter(s=>s.active && !sel.selected.find(p=>p.id===s.id) && (s.skills[k]||0)>0).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0];
         return cand?`${stageName(k)} ⇐ <b>${cand.name}</b> (${cand.skills[k]}/10)`:`${stageName(k)} (chưa ai biết — cần đào tạo)`;
       });
-      return `⚠️ Đủ người nhưng THIẾU KỸ NĂNG ở: <b>${cov.skillGap.map(stageName).join(', ')}</b>. Bổ sung: ${recs.join('; ')}.`;
+      return `⚠️ Đủ người nhưng CHƯA AI LÀM ĐƯỢC: <b>${cov.skillGap.map(stageName).join(', ')}</b>. Bổ sung: ${recs.join('; ')}.`;
     }
-    const bn=cov.bottleneck;
-    const cand=S.staff.filter(s=>s.active && !sel.selected.find(p=>p.id===s.id)).sort((a,b)=>((b.skills[bn.key]||0)-(a.skills[bn.key]||0))||((acc[a.id]||0)-(acc[b.id]||0))).slice(0,2);
-    return `⚠️ Đủ tải nhưng LỆCH KỸ NĂNG — nút thắt <b>${bn.name}</b> (${Math.round(cov.coverage[bn.key]*100)}%). Cần người giỏi khâu này: <b>${cand.map(c=>c.name+' ('+(c.skills[bn.key]||0)+'/10)').join(', ')||'—'}</b>.`;
+    // lệch kỹ năng: nêu khâu kỹ năng team thấp nhất (khớp với thanh bar)
+    const weak=weakestStage(cov);
+    const weakList=[...S.stages].sort((a,b)=>(cov.stageSkill[a.key]||0)-(cov.stageSkill[b.key]||0)).slice(0,2).map(s=>`${s.name} (${(cov.stageSkill[s.key]||0).toFixed(1)}/10)`);
+    const cand=S.staff.filter(s=>s.active && !sel.selected.find(p=>p.id===s.id) && (s.skills[weak.key]||0)>=4).sort((a,b)=>((b.skills[weak.key]||0)-(a.skills[weak.key]||0))||((acc[a.id]||0)-(acc[b.id]||0)))[0];
+    return `⚠️ Đủ đầu người (${sel.selected.length}) nhưng mới chạy ~${Math.round(cov.coverage[weak.key]*100)}% đơn do kỹ năng các khâu lệch nhau. Yếu nhất: <b>${weakList.join(', ')}</b>. ${cand?`Nên thêm người giỏi: <b>${cand.name}</b> (${cand.skills[weak.key]}/10 khâu ${weak.name}).`:'Nên đào tạo nâng kỹ năng các khâu này cho người hiện có.'}`;
   }
   // short_people
   const deficit=Math.max(0,orders-sel.capacity);
   const morePeople=Math.ceil(deficit/(avgProd()*S.config.caHours*S.config.fullDay));
-  const bnKey=cov.bottleneck?cov.bottleneck.key:null;
-  const cand=S.staff.filter(s=>s.active && !sel.selected.find(p=>p.id===s.id)).sort((a,b)=>(((b.skills[bnKey]||0)-(a.skills[bnKey]||0))||((acc[a.id]||0)-(acc[b.id]||0)))).slice(0,Math.max(1,morePeople));
-  return `THIẾU NGƯỜI — đăng ký mới đáp ứng ${Math.round(sel.capacity)}/${Math.round(orders)} đơn, cần thêm ~${morePeople} người. ${cand.length?`Đề xuất gọi thêm (giỏi khâu yếu, đang ít ngày công): <b>${cand.map(c=>c.name).join(', ')}</b>.`:'Đã hết người đăng ký — cần tuyển/tăng ca.'}`;
+  const cand=S.staff.filter(s=>s.active && !sel.selected.find(p=>p.id===s.id)).sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))).slice(0,Math.max(1,morePeople));
+  return `THIẾU NGƯỜI — đăng ký mới đáp ứng ${Math.round(sel.capacity)}/${Math.round(orders)} đơn, cần thêm ~${morePeople} người. ${cand.length?`Gọi thêm (ưu tiên ít ngày công): <b>${cand.map(c=>c.name).join(', ')}</b>.`:'Hết người đăng ký — cần tuyển/tăng ca.'}`;
 }
 
 /* ---- đánh giá nhanh 1 ngày (cho tổng quan tháng) ---- */
@@ -1011,7 +1032,7 @@ function evalDay(d){
   if(t==='closed')return {ds,d,orders:0,status:'closed',type:t};
   const w=stageWeights();
   const sel=selectTeam(orders,dayPeople(ds),{},w);
-  const status={ok:'ok',surplus:'warn',short_people:'bad',short_skill:'bad',closed:'closed'}[sel.status];
+  const status={ok:'ok',surplus:'warn',short_people:'bad',short_skill:'warn',closed:'closed'}[sel.status];
   return {ds,d,orders,status,type:t,sel};
 }
 
@@ -1073,17 +1094,18 @@ function renderMonthView(){
     const start=new Date(refMon); start.setDate(start.getDate()+w*7);
     const ws=fmt(start);
     const dys=Array.from({length:7},(_,i)=>{const d=new Date(start);d.setDate(d.getDate()+i);return evalDay(d)});
-    const bad=dys.filter(x=>x.status==='bad').length, warn=dys.filter(x=>x.status==='warn').length;
+    const raw=x=>x.type==='closed'?'closed':(x.sel?x.sel.status:'ok');
+    const cThieu=dys.filter(x=>raw(x)==='short_people').length, cWarn=dys.filter(x=>['surplus','short_skill'].includes(raw(x))).length;
     const tag = w===0?'<span class="badge b-mid">Tuần hiện tại</span>' : w===1?'<span class="badge b-peak">Tuần tới</span>' : '<span class="badge b-normal">Tuần trước</span>';
     html+=`<div class="${w===0?'mweek mweek-now':'mweek'}">
       <div class="mweek-h">
-        <div><b>Tuần ${weekLabel(ws)}</b> ${tag}${bad?`<span class="badge b-bad">${bad} ngày thiếu</span>`:''}${warn?`<span class="badge b-warn">${warn} ngày thừa</span>`:''}</div>
+        <div><b>Tuần ${weekLabel(ws)}</b> ${tag}${cThieu?`<span class="badge b-bad">${cThieu} ngày thiếu người</span>`:''}${cWarn?`<span class="badge b-warn">${cWarn} ngày cần lưu ý</span>`:''}</div>
         <button class="btn ghost sm" onclick="openWeek('${ws}')">Xem chi tiết ▶</button>
       </div>
       <div class="mdays">
         ${dys.map((x,i)=>{
-          const cls={ok:'mok',warn:'mwarn',bad:'mbad',closed:'mclosed'}[x.status];
-          const lbl={ok:'Đủ',warn:'Thừa',bad:'Thiếu',closed:'Nghỉ'}[x.status];
+          const rs={ok:['mok','Đủ'],surplus:['mwarn','Thừa'],short_people:['mbad','Thiếu'],short_skill:['mwarn','Lệch KN'],closed:['mclosed','Nghỉ']}[raw(x)]||['mbad','—'];
+          const cls=rs[0], lbl=rs[1];
           return `<div class="mday ${cls}" onclick="openWeek('${ws}')" title="Bấm để xem chi tiết tuần">
             <div class="mday-d">${DOW[i].replace('Thứ ','T')} ${x.d.getDate()}/${x.d.getMonth()+1}</div>
             <div class="mday-s">${lbl}</div>
@@ -1100,21 +1122,24 @@ function renderMonthView(){
 function renderWeekView(){
   defaultPlanWeek();
   const {result,acc}=planWeek();
-  const bad=result.filter(r=>r.status==='bad').length;
-  const warn=result.filter(r=>r.status==='warn').length;
-  const ok=result.filter(r=>r.status==='ok').length;
+  const cOk=result.filter(r=>r.sel.status==='ok').length;
+  const cShortP=result.filter(r=>r.sel.status==='short_people').length;
+  const cSurplus=result.filter(r=>r.sel.status==='surplus').length;
+  const cSkill=result.filter(r=>r.sel.status==='short_skill').length;
   const totOrders=result.reduce((a,r)=>a+(r.orders||0),0);
   document.getElementById('planKpi').innerHTML=`
     <div class="box"><div class="l">Tổng đơn tuần</div><div class="n">${Math.round(totOrders)}</div></div>
-    <div class="box"><div class="l">Ngày đủ</div><div class="n" style="color:var(--ok)">${ok}</div></div>
-    <div class="box"><div class="l">Ngày thiếu người</div><div class="n" style="color:var(--bad)">${bad}</div></div>
-    <div class="box"><div class="l">Ngày thừa người</div><div class="n" style="color:var(--warn)">${warn}</div></div>`;
+    <div class="box"><div class="l">Đủ người</div><div class="n" style="color:var(--ok)">${cOk}</div></div>
+    <div class="box"><div class="l">Thiếu người</div><div class="n" style="color:var(--bad)">${cShortP}</div></div>
+    <div class="box"><div class="l">Thừa người</div><div class="n" style="color:var(--warn)">${cSurplus}</div></div>
+    <div class="box"><div class="l">Lệch kỹ năng</div><div class="n" style="color:var(--warn)">${cSkill}</div></div>`;
 
   document.getElementById('planGrid').innerHTML=result.map((r,i)=>{
     const tb={normal:['b-normal','Ngày thường'],mid:['b-mid','Ngày 15&25'],peak:['b-peak','Ngày trùng'],closed:['b-closed','Đóng cửa']}[r.type];
-    const sb={ok:'b-ok',warn:'b-warn',bad:'b-bad',closed:'b-closed'}[r.status];
-    const st={ok:'ĐỦ',warn:'THỪA',bad:'THIẾU',closed:'NGHỈ'}[r.status];
+    const hc=headcountText(r);
+    const sb=hc.cls, st=hc.text;
     const cov=r.sel.cov;
+    const weak=(r.sel.status==='short_skill'||r.sel.status==='short_people')?weakestStage(cov):null;
     // người được phân làm
     const workers=r.sel.selected.map(p=>{const reg=(S.reg[r.ds]&&S.reg[r.ds][p.id])||[];return `<li><span>${esc(p.name)}</span><span class="pill">${reg.map(c=>CASHORT[c]).join('+')}</span></li>`}).join('')||'<li><span class="pill">Chưa ai được phân</span></li>';
     const restHtml = r.sel.rest&&r.sel.rest.length ? `<div class="metric" style="color:var(--muted)">Có thể nghỉ: ${r.sel.rest.map(p=>esc(p.name)).join(', ')}</div>`:'';
@@ -1124,7 +1149,7 @@ function renderWeekView(){
         const c=Math.round((cov.coverage[s.key]||0)*100);
         const cap=cov.capableCount[s.key]||0;
         const col=sk>=7?'var(--ok)':sk>=4?'var(--warn)':'var(--bad)';
-        const isBn=cov.bottleneck&&cov.bottleneck.key===s.key&&r.status==='bad';
+        const isBn=weak&&weak.key===s.key;
         const warn=cap===0?' ⛔':(cap===1?' ⚠️':'');
         return `<div class="stbar" title="${esc(s.name)} — kỹ năng team ${sk.toFixed(1)}/10 · phủ ${c}% · ${cap} người làm được">
           <span class="stname">${esc(s.name)}${isBn?' 🔴':''}</span>
