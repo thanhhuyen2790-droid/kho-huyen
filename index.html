@@ -202,6 +202,7 @@
         <div><label class="fld">Ngày trùng (cách nhau dấu phẩy)</label><input id="dm-peak-dates" placeholder="VD: 6" onchange="saveAll();renderDemand()"></div>
         <div><label class="fld">Ngày kho đóng cửa</label><input id="dm-closed-dates" placeholder="VD: 0 (để trống)" onchange="saveAll();renderDemand()"></div>
       </div>
+      <label class="fld inline" style="margin-top:12px;cursor:pointer"><input type="checkbox" id="dm-sunday-off" onchange="S.config.sundayOff=this.checked;saveAll();renderDemand()"> &nbsp;<b>Chủ nhật kho nghỉ — dồn đơn Chủ nhật sang Thứ Hai</b> (đơn CN tính theo loại ngày của CN: thường, hoặc ×2 nếu CN là 15/25, ×4 nếu CN là ngày trùng)</label>
       <div id="demandPreview" style="margin-top:14px"></div>
     </div>
   </section>
@@ -355,7 +356,7 @@ function defaultSkills(){const o={};DEF_STAGES.forEach(s=>o[s.key]=5);return o;}
 
 function defaultState(){
   return {
-    config:{prod:20,caHours:4,fullDay:2},
+    config:{prod:20,caHours:4,fullDay:2,sundayOff:true},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -378,6 +379,8 @@ let S=load();
 function id(){return 'x'+Math.random().toString(36).slice(2,9)}
 function migrate(o){
   if(!o.pending)o.pending=[];
+  if(!o.config)o.config={prod:20,caHours:4,fullDay:2};
+  if(o.config.sundayOff===undefined)o.config.sundayOff=true;
   if(!o.stages||!o.stages.length)o.stages=DEF_STAGES.map(s=>({...s}));
   // bổ sung khâu mới nếu thiếu
   DEF_STAGES.forEach(d=>{ if(!o.stages.find(s=>s.key===d.key))o.stages.push({...d}); });
@@ -665,7 +668,8 @@ function renderDemand(){
   document.getElementById('dm-mid-dates').value=S.demand.midDates;
   document.getElementById('dm-peak-dates').value=S.demand.peakDates;
   document.getElementById('dm-closed-dates').value=S.demand.closedDates;
-  const plats=[['shopee','Shopee'],['tiktok','Tiktok'],['lazada','Lazada']];
+  document.getElementById('dm-sunday-off').checked=S.config.sundayOff!==false;
+  const plats=[['shopee','Shopee'],['tiktok','Tiktok'],['lazada','Crabthing']];
   document.getElementById('demandBody').innerHTML=plats.map(p=>`<tr>
     <td>${p[1]}</td>
     <td><input type="number" step="0.1" value="${(S.demand.base[p[0]][mi]).toFixed(1)}" onchange="S.demand.base['${p[0]}'][${mi}]=+this.value;saveAll();renderDemand()"></td>
@@ -767,22 +771,37 @@ function datesOfWeek(w){
   const m=parse(w); return Array.from({length:7},(_,i)=>{const d=new Date(m);d.setDate(d.getDate()+i);return d});
 }
 function weekDates(){ return datesOfWeek(document.getElementById('reg-week').value); }
-function dayType(d){
-  // chỉ áp dụng hệ số theo cấu hình tháng đang chọn (so khớp ngày trong tháng)
+function inDateList(str,day){return (str||'').split(',').map(s=>+s.trim()).filter(Boolean).includes(day);}
+function isClosed(d){
+  if(inDateList(S.demand.closedDates,d.getDate()))return true;
+  if(S.config.sundayOff!==false && d.getDay()===0)return true; // Chủ nhật kho nghỉ
+  return false;
+}
+// loại ngày theo đặc biệt (bỏ qua việc nghỉ) — dùng để tính đơn sàn sinh ra
+function baseType(d){
   const day=d.getDate();
-  const inList=(str)=>str.split(',').map(s=>+s.trim()).filter(Boolean).includes(day);
-  if(inList(S.demand.closedDates))return 'closed';
-  if(inList(S.demand.peakDates))return 'peak';
-  if(inList(S.demand.midDates))return 'mid';
-  return 'normal';
+  if(inDateList(S.demand.peakDates,day))return {t:'peak',f:S.demand.mult.peak};
+  if(inDateList(S.demand.midDates,day))return {t:'mid',f:S.demand.mult.mid};
+  return {t:'normal',f:1};
 }
-function ordersOn(d){
-  const t=dayType(d); if(t==='closed')return 0;
-  const mi=d.getMonth(); // dùng tháng của chính ngày đó (cho phép xem 4 tuần vắt qua 2 tháng)
+function dayType(d){ return isClosed(d) ? 'closed' : baseType(d).t; }
+// đơn sàn sinh ra trong ngày (kể cả ngày kho nghỉ)
+function rawOrders(d){
+  const mi=d.getMonth();
   const base=S.demand.base.shopee[mi]+S.demand.base.tiktok[mi]+S.demand.base.lazada[mi];
-  const f=t==='peak'?S.demand.mult.peak:t==='mid'?S.demand.mult.mid:1;
-  return base*f;
+  return base*baseType(d).f;
 }
+// đơn kho phải xử lý trong ngày: ngày nghỉ = 0 (dồn sang ngày làm kế tiếp); ngày làm = đơn của mình + đơn các ngày nghỉ liền trước
+function ordersOn(d){
+  if(isClosed(d))return 0;
+  let total=rawOrders(d);
+  let prev=new Date(d); prev.setDate(prev.getDate()-1);
+  let guard=0;
+  while(isClosed(prev) && guard++<10){ total+=rawOrders(prev); prev.setDate(prev.getDate()-1); }
+  return total;
+}
+// phần đơn được dồn từ ngày nghỉ liền trước (để hiển thị)
+function rolledOrders(d){ return isClosed(d)?0:(ordersOn(d)-rawOrders(d)); }
 
 /* ---------- REGISTRATION ---------- */
 function defaultWeek(){
@@ -1116,7 +1135,7 @@ function renderWeekView(){
     return `<div class="day ${r.status}">
       <div class="dh"><b>${DOW[i]}</b><span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
-      <div class="metric">Đơn: <b>${Math.round(r.orders)}</b> · Cần ≈ <b>${r.reqPeople}</b> người · Phân <b>${r.sel.selected.length}</b>/đăng ký <b>${r.sel.selected.length+(r.sel.rest?r.sel.rest.length:0)}</b></div>
+      <div class="metric">Đơn: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn từ ngày nghỉ</span>`:'';})()} · Cần ≈ <b>${r.reqPeople}</b> người · Phân <b>${r.sel.selected.length}</b>/đăng ký <b>${r.sel.selected.length+(r.sel.rest?r.sel.rest.length:0)}</b></div>
       ${stagesHtml}
       <ul class="stafflist">${workers}</ul>
       ${restHtml}
