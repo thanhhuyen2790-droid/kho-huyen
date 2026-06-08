@@ -87,6 +87,11 @@
   .schedtbl .closedc{background:#f4f5f8;text-align:center;color:var(--muted)}
   .restchk{display:inline-flex;align-items:center;gap:3px;margin:2px 8px 2px 0;cursor:pointer;font-size:11.5px}
   .restchk.on{color:#8a6500;font-weight:700}
+  .catbl{width:100%;border-collapse:collapse;margin-top:5px;font-size:11.5px}
+  .catbl th,.catbl td{border:1px solid var(--line);padding:3px 6px;text-align:left;vertical-align:top}
+  .catbl th{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase}
+  .catbl td:first-child{font-weight:600;white-space:nowrap}
+  .catbl td:last-child{white-space:nowrap}
   .caSec{border-top:2px solid var(--line);margin-top:9px;padding-top:7px}
   .caHead{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
   .caHead .badge{margin-left:auto}
@@ -1519,18 +1524,21 @@ function renderWeekView(){
       const perf= ca!=='Tối'
         ? `<div class="metric">Năng lực <b>${Math.round(cs.cap)}</b> đơn · giao <b>${Math.round(cs.quota)}</b>${cs.quota>cs.need+1?` <span class="pill" style="color:#6a45d6">(gánh +${Math.round(cs.quota-cs.need)} bù ca kia)</span>`:''}${cs.weak&&cs.weak.length?` · <span style="color:var(--bad)">KN yếu: ${cs.weak.map(stageName).join(', ')}</span>`:''}</div>`
         : `<div class="metric">Hỗ trợ thêm ~${Math.round(cs.cap)} đơn</div>`;
-      const rows=cs.members.map(p=>{
-        const tops=(cs.roles&&cs.roles[p.id])||[];
-        const lbl=ca==='Tối'?'Hỗ trợ':(tops.length?(tops.slice(0,2).map(stageName).join(' + ')+(tops.length>2?' +'+(tops.length-2):'')):'Dự phòng');
-        const mainK=tops[0];
-        const sk=mainK?(p.skills[mainK]||0):Math.max(0,...S.stages.map(s=>p.skills[s.key]||0));
-        const bm=mainK?benchmark(mainK):Math.max(...S.stages.map(s=>s.rate));
-        const ratio=bm>0?sk/bm:0;
-        const col=ratio>=1?'var(--ok)':ratio>=0.6?'var(--warn)':'var(--bad)';
-        return `<li><span>${esc(p.name)} <small class="hint">— ${esc(lbl)}</small></span><span style="display:flex;align-items:center;gap:4px" title="${Math.round(sk)} đơn/h${mainK?' (chuẩn '+bm+')':''}"><span class="sttrack" style="width:44px;flex:none"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span><b style="font-size:11px">${Math.round(sk)}</b></span></li>`;
-      }).join('');
-      const crabRows=cs.crab.map(p=>`<li><span>${esc(p.name)} <small class="hint">— 🦀 Crabthing</small></span><span class="pill">${Math.round((S.config.crabRate||30)/2)} SKU</span></li>`).join('');
-      return `<div class="caSec">${header}${perf}<ul class="stafflist">${rows}${crabRows||''}</ul></div>`;
+      // 3 cột: Khâu | Nhân sự | Tốc độ — nhìn là biết ai làm bước nào
+      const skCell=(p,k)=>{const rt=p.skills[k]||0;const bm=benchmark(k);const ratio=bm>0?rt/bm:0;const col=ratio>=1?'var(--ok)':ratio>=0.6?'var(--warn)':'var(--bad)';
+        return `<span style="display:inline-flex;align-items:center;gap:3px"><span class="sttrack" style="width:34px;flex:none"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span><b style="font-size:11px;color:${col}">${Math.round(rt)}</b></span>`;};
+      let body='';
+      if(ca==='Tối'){
+        body=cs.members.length?`<tr><td>Hỗ trợ</td><td>${cs.members.map(p=>esc(p.name)).join('<br>')}</td><td>—</td></tr>`:'';
+      } else {
+        body=S.stages.map(s=>{
+          const ppl=cs.members.filter(p=>(cs.roles&&cs.roles[p.id]||[]).includes(s.key));
+          if(!ppl.length)return `<tr><td>${esc(s.name)}</td><td colspan="2" style="color:var(--bad)">⛔ chưa có người</td></tr>`;
+          return `<tr><td>${esc(s.name)}</td><td>${ppl.map(p=>esc(p.name)).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
+        }).join('');
+      }
+      const crabRow=cs.crab.length?`<tr><td>🦀 Crabthing</td><td>${cs.crab.map(p=>esc(p.name)).join('<br>')}</td><td>${Math.round((S.config.crabRate||30)/2)} SKU</td></tr>`:'';
+      return `<div class="caSec">${header}${perf}<table class="catbl"><thead><tr><th>Khâu / quy trình</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table></div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
     const restedIds=(S.restDays&&S.restDays[r.ds])||[];
