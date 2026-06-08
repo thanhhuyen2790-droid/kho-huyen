@@ -1000,9 +1000,9 @@ function renderWeekSchedule(){
     S.stages.forEach(s=>{
       html+=stepRow(esc(s.name),'var(--okbg)',r=>{const cs=r.caStat[ca];if(!cs)return '';return cs.members.filter(p=>roleOf(cs,p.id).includes(s.key)).map(p=>nm(p.name)).join('');});
     });
-    // người chưa được gán khâu cụ thể
+    // người được giữ trong ca nhưng hôm đó CHƯA CẦN giao việc (ngày ít đơn / dư trong ca)
     if(result.some(r=>r.type!=='closed'&&r.caStat[ca]&&r.caStat[ca].members.some(p=>!roleOf(r.caStat[ca],p.id).length)))
-      html+=stepRow('Linh hoạt','#f5faf2',r=>{const cs=r.caStat[ca];if(!cs)return '';return cs.members.filter(p=>!roleOf(cs,p.id).length).map(p=>nm(p.name)).join('');});
+      html+=stepRow('Dự phòng (chưa cần)','#fafafa',r=>{const cs=r.caStat[ca];if(!cs)return '';return cs.members.filter(p=>!roleOf(cs,p.id).length).map(p=>nm(p.name)).join('');});
   });
   // 🌙 Ca tối
   if(result.some(r=>r.type!=='closed'&&r.caStat['Tối']&&r.caStat['Tối'].members.length)){
@@ -1226,7 +1226,7 @@ function selectDay(N, crabD, pool, acc){
       const mm=members.map(p=>({...p,hours:caH}));
       const covCa=coverageOf(Math.max(1,quota||half), mm);
       weak=weakKeysOf(covCa);
-      members.forEach(p=>{const a=covCa.assign[p.id]||{};roles[p.id]=Object.entries(a).filter(([,h])=>h>0.2).sort((x,y)=>y[1]-x[1]).slice(0,2).map(([k])=>k);});
+      members.forEach(p=>{const a=covCa.assign[p.id]||{};roles[p.id]=Object.entries(a).filter(([,h])=>h>0.001).sort((x,y)=>y[1]-x[1]).slice(0,2).map(([k])=>k);});
     }
     caStat[ca]={members,cap:c,need,quota,st,crab:crabHere,weak,roles,
       morePeople: st==='thiếu'? Math.max(1,Math.ceil((half-c)/onePersonCa)) : 0};
@@ -1518,7 +1518,7 @@ function renderWeekView(){
         : `<div class="metric">Hỗ trợ thêm ~${Math.round(cs.cap)} đơn</div>`;
       const rows=cs.members.map(p=>{
         const tops=(cs.roles&&cs.roles[p.id])||[];
-        const lbl=ca==='Tối'?'Hỗ trợ':(tops.length?tops.map(stageName).join(' + '):'Linh hoạt');
+        const lbl=ca==='Tối'?'Hỗ trợ':(tops.length?tops.map(stageName).join(' + '):'Dự phòng (chưa cần)');
         const mainK=tops[0];
         const sk=mainK?(p.skills[mainK]||0):Math.max(0,...S.stages.map(s=>p.skills[s.key]||0));
         const bm=mainK?benchmark(mainK):Math.max(...S.stages.map(s=>s.rate));
