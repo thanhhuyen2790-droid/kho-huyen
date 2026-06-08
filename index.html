@@ -1168,8 +1168,8 @@ function selectDay(N, crabD, pool, acc, trainMap){
   const caH=S.config.caHours, half=N/2;
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TỐC ĐỘ TRỌN GÓI đơn/h (làm đủ 7 khâu)
   const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
-  // CHẠY ĐƠN: ƯU TIÊN FULL-TIME chạy nền trước -> full-day trước -> ít ngày công trước -> trọn-gói NHANH hơn (giữ người giỏi cho đơn). PT chỉ bổ sung khi FT chưa đủ.
-  const fair=(a,b)=>((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || ((isFull(b)?1:0)-(isFull(a)?1:0)) || ((acc[a.id]||0)-(acc[b.id]||0)) || (pr(b)-pr(a));
+  // CHẠY ĐƠN — thứ tự ưu tiên: Full-time -> Full-day -> Trọn-gói NHANH hơn -> Ít ngày công hơn. PT chỉ bổ sung khi FT chưa đủ.
+  const fair=(a,b)=>((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || ((isFull(b)?1:0)-(isFull(a)?1:0)) || (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0));
   // CRABTHING: ít ngày công trước -> PT trước (để FT chạy đơn) -> người trọn-gói CHẬM hơn làm crab trước
   const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(a)-pr(b));
   const onePersonCa=Math.max(1,(S.config.prod||20)*caH); // 1 người 1 ca làm được ~ 20×giờ đơn
