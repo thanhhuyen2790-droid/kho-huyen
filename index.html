@@ -710,7 +710,7 @@ function peopleNeeded(o){ if(o<=0)return 0; return Math.ceil(o/(avgProd()*S.conf
 function dayPeople(ds){
   const reg=S.reg[ds]||{}, arr=[];
   for(const sid in reg){ const st=S.staff.find(x=>x.id===sid); if(!st||!st.active)continue;
-    arr.push({id:sid,name:st.name,type:st.type,cas:reg[sid].length,hours:reg[sid].length*S.config.caHours,prod:prodOf(st),skills:st.skills}); }
+    arr.push({id:sid,name:st.name,type:st.type,cas:reg[sid].length,caList:reg[sid].slice(),hours:reg[sid].length*S.config.caHours,prod:prodOf(st),skills:st.skills}); }
   return arr;
 }
 function capacityOf(team){ return team.reduce((a,p)=>a+p.prod*p.hours,0); }
@@ -986,34 +986,98 @@ function weakestStage(cov){
   const pool=under.length?under:S.stages.slice();
   return pool.reduce((m,s)=>(cov.stageSkill[s.key]||0)<(cov.stageSkill[m.key]||0)?s:m, pool[0]);
 }
-// gán người cho Crabthing (SKU) — ai cũng làm được, ưu tiên ít ngày công
-function assignCrab(demand, pool, acc){
-  const perCa=(S.config.crabRate||30)/2; // mỗi ca (sáng-chiều = 2 ca = crabRate SKU)
-  if(demand<=0)return {selected:[],rest:pool.slice(),cap:0,short:false,more:0,demand:0,perCa};
-  const sorted=pool.slice().sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))||(a.type==='PT'?-1:1));
-  const selected=[]; let cap=0;
-  for(const p of sorted){ if(cap>=demand-1e-6)break; selected.push(p); cap+=p.cas*perCa; }
-  const rest=sorted.filter(p=>!selected.includes(p));
-  return {selected,rest,cap,short:cap<demand-1e-6,more:Math.max(0,Math.ceil((demand-cap)/(S.config.crabRate||30))),demand,perCa};
+// ===== PHÂN BỔ THEO CA: full-day ưu tiên vào nền, người theo ca bù ca thiếu, dư mới làm Crabthing =====
+// Mục tiêu: dùng ÍT người nhất mà chạy đủ đơn cả 2 ca + đủ Crabthing, công bằng ngày công
+function selectDay(N, crabD, pool, acc, w){
+  const caH=S.config.caHours, half=N/2; // đơn chia đều ca sáng / ca chiều
+  const fair=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (a.prod-b.prod);
+  const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
+  const cap={'Sáng':0,'Chiều':0,'Tối':0};
+  const selected=[], inSel=new Set();
+  const addP=p=>{selected.push(p);inSel.add(p.id);p.caList.forEach(c=>{if(cap[c]!==undefined)cap[c]+=p.prod*caH;});};
+  const caMembers=ca=>selected.filter(p=>p.caList.includes(ca)).map(p=>({...p,hours:caH}));
+  // các khâu team đang hổng (không ai) hoặc quá yếu (<4 điểm)
+  const weakKeysOf=cov=>{const ks=[...cov.skillGap];S.stages.forEach(s=>{const v=cov.stageSkill[s.key]||0;if(v>0&&v<4&&!ks.includes(s.key))ks.push(s.key);});return ks;};
+  // chọn người kế tiếp: nếu team đang hổng/yếu kỹ năng -> ưu tiên người lấp được khâu đó; không thì theo công bằng
+  const pickFrom=(cands, team, needN, extraKeys)=>{
+    if(!cands.length)return -1;
+    if(team.length){
+      const cov=coverageOf(Math.max(1,needN), team, w);
+      const gaps=[...weakKeysOf(cov), ...(extraKeys||[])];
+      if(gaps.length){const k=gaps[0];let bi=-1,bs=0;cands.forEach((p,i)=>{const sk=p.skills[k]||0;if(sk>bs){bs=sk;bi=i;}});if(bs>0)return bi;}
+    }
+    return 0;
+  };
+  // 1a. người FULL ngày vào trước (nền hiệu suất 2 ca) — chọn người lấp kỹ năng còn hổng trước
+  {
+    const cands=pool.filter(isFull).sort(fair);
+    while(cands.length && (cap['Sáng']<half-1e-6||cap['Chiều']<half-1e-6)){
+      const i=pickFrom(cands, selected.slice(), N);
+      addP(cands.splice(Math.max(0,i),1)[0]);
+    }
+  }
+  // 1b. bù từng ca bằng người theo ca — ca CHIỀU ưu tiên bù luôn các khâu ca SÁNG bị yếu (do fix người đăng ký)
+  let sangWeak=[];
+  for(const ca of ['Sáng','Chiều']){
+    const cands=pool.filter(p=>!inSel.has(p.id)&&p.caList.includes(ca)&&!isFull(p)).sort(fair);
+    while(cands.length && cap[ca]<half-1e-6){
+      const i=pickFrom(cands, caMembers(ca), half, ca==='Chiều'?sangWeak:[]);
+      addP(cands.splice(Math.max(0,i),1)[0]);
+    }
+    if(ca==='Sáng'&&caMembers('Sáng').length){ sangWeak=weakKeysOf(coverageOf(Math.max(1,half), caMembers('Sáng'), w)); }
+  }
+  // 1c. nếu TỔNG ngày vẫn thiếu, thêm bất kỳ ai còn lại (kể cả ca tối hỗ trợ)
+  const totalCap=()=>cap['Sáng']+cap['Chiều']+cap['Tối'];
+  pool.filter(p=>!inSel.has(p.id)).sort(fair).forEach(p=>{ if(totalCap()<N-1e-6)addP(p); });
+  // 2. CRABTHING từ người dư: mỗi ca chỉ cần 1 người làm crabRate/2 SKU (người full = crabRate)
+  const perCa=(S.config.crabRate||30)/2;
+  const crabSel=[]; let crabCap=0;
+  pool.filter(p=>!inSel.has(p.id)).sort(fair).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSel.add(p.id);crabCap+=p.caList.length*perCa;} });
+  const rest=pool.filter(p=>!inSel.has(p.id));
+  // 3. báo cáo từng ca (kèm khâu kỹ năng yếu của ca)
+  const caStat={};
+  ['Sáng','Chiều','Tối'].forEach(ca=>{
+    const members=selected.filter(p=>p.caList.includes(ca));
+    const c=members.reduce((a,p)=>a+p.prod*caH,0);
+    const need=ca==='Tối'?0:half;
+    let st;
+    if(ca==='Tối')st=members.length?'support':'none';
+    else if(c<need-1e-6)st='thiếu';
+    else if(c-need>=avgProd()*caH*0.9)st='thừa';
+    else st='đủ';
+    const crabHere=crabSel.filter(p=>p.caList.includes(ca));
+    let weak=[];
+    if(ca!=='Tối'&&members.length&&N>0){ weak=weakKeysOf(coverageOf(Math.max(1,need), members.map(p=>({...p,hours:caH})), w)); }
+    caStat[ca]={members,cap:c,need,st,crab:crabHere,weak,
+      morePeople: st==='thiếu'? Math.max(1,Math.ceil((need-c)/(avgProd()*caH))) : 0};
+  });
+  return {selected,crabSel,rest,cap,caStat,ordersCap:totalCap(),crabCap,crabD,
+    crabShort:crabD>0&&crabCap<crabD-1e-6,
+    crabMore:Math.max(0,Math.ceil((crabD-crabCap)/(S.config.crabRate||30)))};
 }
-// gộp 1 ngày: ưu tiên đơn Shopee+Tiktok, người dư mới làm Crabthing
+// gộp 1 ngày
 function planDay(d, acc, w){
   const ds=fmt(d), t=dayType(d), orders=ordersOn(d), crabD=crabDemandOn(d);
   const pool=dayPeople(ds);
-  const ord=selectTeam(orders, pool, acc, w);
-  const crab=assignCrab(crabD, ord.rest, acc);
-  const finalRest=crab.rest;
-  const leftoverH=finalRest.reduce((a,p)=>a+p.hours,0);
+  if(t==='closed'){const sd=selectDay(0,0,[],acc,w);return {ds,d,type:t,orders:0,crabD:0,sd,ord:{selected:[],status:'ok',cov:coverageOf(0,[],w),capacity:0},crab:{selected:[],short:false,more:0,demand:0,cap:0},finalRest:pool,kind:'closed',caStat:sd.caStat};}
+  const sd=selectDay(orders, crabD, pool, acc, w);
+  const cov=coverageOf(orders, sd.selected, w); // kỹ năng: chỉ là NHẬN XÉT, không kéo thêm người
+  const ordShort=sd.ordersCap<orders-1e-6;
+  const ordStatus=ordShort?'short_people':(!cov.fully?'short_skill':'ok');
+  const leftoverH=sd.rest.reduce((a,p)=>a+p.hours,0);
   let kind;
-  if(t==='closed')kind='closed';
-  else if(ord.status==='short_people' && crab.short)kind='short_both';
-  else if(ord.status==='short_people')kind='short_people';
-  else if(crab.short)kind='short_crab';
-  else if(ord.status==='short_skill')kind='short_skill';
-  else if(leftoverH>=S.config.caHours*S.config.fullDay*0.9)kind='surplus';
+  if(ordShort&&sd.crabShort)kind='short_both';
+  else if(ordShort)kind='short_people';
+  else if(sd.crabShort)kind='short_crab';
+  else if(!cov.fully)kind='short_skill';
+  else if(leftoverH>=caHoursOf())kind='surplus';
   else kind='ok';
-  return {ds,d,type:t,orders,crabD,ord,crab,finalRest,kind};
+  return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,
+    ord:{selected:sd.selected,status:ordStatus,cov,capacity:sd.ordersCap},
+    crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap},
+    finalRest:sd.rest,kind};
 }
+function caHoursOf(){return S.config.caHours;}
 function planWeek(){
   const dates=datesOfWeek(document.getElementById('plan-week').value);
   const acc={}; S.staff.forEach(s=>acc[s.id]=0);
@@ -1038,9 +1102,10 @@ function headcountText(r){
   if(r.type==='closed')return {cls:'b-closed',text:'NGHỈ'};
   const parts=[];
   if(r.ord.status==='short_people'){
-    const def=Math.max(0,r.orders-r.ord.capacity);
-    const m=Math.max(1,Math.ceil(def/(avgProd()*S.config.caHours*S.config.fullDay)));
-    parts.push(`chạy đơn +${m}`);
+    const cs=r.caStat['Sáng'], cc=r.caStat['Chiều'];
+    if(cs&&cs.st==='thiếu')parts.push(`ca sáng +${cs.morePeople}`);
+    if(cc&&cc.st==='thiếu')parts.push(`ca chiều +${cc.morePeople}`);
+    if(!parts.length){const def=Math.max(0,r.orders-r.ord.capacity);parts.push(`chạy đơn +${Math.max(1,Math.ceil(def/(avgProd()*S.config.caHours*S.config.fullDay)))}`);}
   }
   if(r.crab.short)parts.push(`Crabthing +${r.crab.more}`);
   if(parts.length)return {cls:'b-bad',text:`Thiếu người (${parts.join(', ')})`};
@@ -1049,7 +1114,12 @@ function headcountText(r){
 }
 function ordersComment(r, acc){
   const sel=r.ord, cov=sel.cov, ds=r.ds;
-  if(sel.status==='ok'||sel.status==='surplus')return `🟢 <b>Chạy đơn (Shopee+Tiktok):</b> đủ ${sel.selected.length} người, đủ kỹ năng.`;
+  if(sel.status==='ok'||sel.status==='surplus'){
+    const extra=[];
+    ['Sáng','Chiều'].forEach(ca=>{const cs=r.caStat&&r.caStat[ca];if(cs&&cs.st==='thừa')extra.push(`ca ${ca.toLowerCase()} dư tải ~${Math.round(cs.cap-cs.need)} đơn — có thể đẩy hiệu suất/đi đơn sớm`);});
+    const sg=r.caStat?` (sáng làm được ~${Math.round(r.caStat['Sáng'].cap)}, chiều ~${Math.round(r.caStat['Chiều'].cap)} đơn)`:'';
+    return `🟢 <b>Chạy đơn:</b> đủ ${sel.selected.length} người${sg}.${extra.length?' '+extra.join('; ')+'.':''}`;
+  }
   if(sel.status==='short_skill'){
     if(cov.skillGap.length){
       const recs=cov.skillGap.map(k=>{const c=notRegistered(ds).filter(s=>(s.skills[k]||0)>0).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0];return c?`${stageName(k)} ⇐ <b>${c.name}</b>`:`${stageName(k)} (chưa ai biết — đào tạo)`;});
@@ -1057,15 +1127,21 @@ function ordersComment(r, acc){
     }
     const weak=weakestStage(cov);
     const weakList=[...S.stages].sort((a,b)=>(cov.stageSkill[a.key]||0)-(cov.stageSkill[b.key]||0)).slice(0,2).map(s=>`${s.name} (${(cov.stageSkill[s.key]||0).toFixed(1)})`);
-    const c=notRegistered(ds).filter(s=>(s.skills[weak.key]||0)>=4).sort((a,b)=>(b.skills[weak.key]||0)-(a.skills[weak.key]||0))[0];
-    return `🟡 <b>Chạy đơn:</b> đủ ${sel.selected.length} người nhưng mới ~${Math.round(cov.coverage[weak.key]*100)}% đơn do lệch kỹ năng. Yếu nhất: <b>${weakList.join(', ')}</b>. ${c?`Nên thêm <b>${c.name}</b> (giỏi ${weak.name}).`:'Nên đào tạo các khâu này.'}`;
+    // người đủ skill khâu yếu, trong đó ưu tiên ÍT giờ làm
+    const c=notRegistered(ds).filter(s=>(s.skills[weak.key]||0)>=4).sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))||((b.skills[weak.key]||0)-(a.skills[weak.key]||0)))[0];
+    return `🟡 <b>Chạy đơn:</b> đủ ${sel.selected.length} người nhưng mới ~${Math.round(cov.coverage[weak.key]*100)}% đơn do lệch kỹ năng. Yếu nhất: <b>${weakList.join(', ')}</b>. ${c?`Nên thêm <b>${c.name}</b> (đủ skill ${weak.name}, đang ít giờ làm).`:'Nên đào tạo các khâu này.'}`;
   }
-  // short_people
+  // short_people — nêu rõ thiếu Ở CA NÀO, gợi ý người ĐỦ SKILL còn thiếu + ưu tiên ít giờ làm
+  const caLines=[];
+  ['Sáng','Chiều'].forEach(ca=>{const cs=r.caStat&&r.caStat[ca];if(cs&&cs.st==='thiếu')caLines.push(`ca ${ca.toLowerCase()} mới làm được ${Math.round(cs.cap)}/${Math.round(cs.need)} đơn (thiếu ≈${cs.morePeople} người)`);});
   const def=Math.max(0,r.orders-sel.capacity);
   const more=Math.max(1,Math.ceil(def/(avgProd()*S.config.caHours*S.config.fullDay)));
   const weak=weakestStage(cov);
-  const cands=notRegistered(ds).sort((a,b)=>((b.skills[weak.key]||0)-(a.skills[weak.key]||0))||((acc[a.id]||0)-(acc[b.id]||0))).slice(0,more);
-  return `🔴 <b>Chạy đơn:</b> THIẾU — đáp ứng ${Math.round(sel.capacity)}/${Math.round(r.orders)} đơn, cần thêm ~${more} người. ${cands.length?`Gọi thêm: <b>${cands.map(c=>c.name).join(', ')}</b>.`:'Hết người — cần tuyển/tăng ca.'}`;
+  const all=notRegistered(ds);
+  const qualified=all.filter(s=>(s.skills[weak.key]||0)>=5).sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))||((b.skills[weak.key]||0)-(a.skills[weak.key]||0)));
+  const others=all.filter(s=>(s.skills[weak.key]||0)<5).sort((a,b)=>(acc[a.id]||0)-(acc[b.id]||0));
+  const cands=[...qualified,...others].slice(0,more);
+  return `🔴 <b>Chạy đơn:</b> THIẾU — ${caLines.join('; ')||`đáp ứng ${Math.round(sel.capacity)}/${Math.round(r.orders)} đơn`}. ${cands.length?`Gọi thêm (đủ skill team đang thiếu, ưu tiên ít giờ làm): <b>${cands.map(c=>c.name).join(', ')}</b> — đăng ký đúng ca thiếu.`:'Hết người — cần tuyển/tăng ca.'}`;
 }
 function crabComment(r, acc){
   const crab=r.crab, ds=r.ds;
@@ -1213,6 +1289,12 @@ function renderWeekView(){
       <div class="dh"><b>${DOW[i]}</b><span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Cần ≈ <b>${r.reqPeople}</b> · Chạy đơn <b>${r.ord.selected.length}</b> · đăng ký <b>${totalReg}</b></div>
+      ${r.type!=='closed'&&r.caStat?['Sáng','Chiều','Tối'].map(ca=>{
+        const cs=r.caStat[ca]; if(!cs)return '';
+        if(ca==='Tối')return cs.members.length?`<div class="metric">🌙 Ca tối (hỗ trợ): <b>${cs.members.length}</b> người · +${Math.round(cs.cap)} đơn</div>`:'';
+        const b=cs.st==='thiếu'?['b-bad','THIẾU +'+cs.morePeople]:cs.st==='thừa'?['b-warn','THỪA']:['b-ok','ĐỦ'];
+        return `<div class="metric">${ca==='Sáng'?'☀️':'🌤️'} Ca ${ca.toLowerCase()}: <b>${cs.members.length}</b> người · làm được <b>${Math.round(cs.cap)}</b>/${Math.round(cs.need)} đơn <span class="badge ${b[0]}">${b[1]}</span>${cs.crab.length?` <span class="pill">🦀 ${cs.crab.map(p=>esc(p.name)).join(', ')}</span>`:''}${cs.weak&&cs.weak.length?` <span class="pill" style="color:var(--bad)">KN yếu: ${cs.weak.map(stageName).join(', ')}</span>`:''}</div>`;
+      }).join(''):''}
       ${stagesHtml}
       <div class="metric" style="margin-top:4px;color:var(--muted)">Người chạy đơn:</div>
       <ul class="stafflist">${workers}</ul>
