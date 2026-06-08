@@ -1227,8 +1227,7 @@ function selectDay(N, crabD, pool, acc, trainMap){
     const quota=ca==='Sáng'?qS:(ca==='Chiều'?qC:0);
     let st;
     if(ca==='Tối')st=members.length?'support':'none';
-    else if(dayShort && c<half-1e-6)st='thiếu';
-    else if(quota>half+1)st='bù';
+    else if(c<half-1e-6)st='thiếu';   // năng lực ca < chỉ tiêu N/2
     else st='đủ';
     const crabHere=crabSel.filter(p=>p.caList.includes(ca));
     let weak=[], roles={}, assignH={}, gap=[], bnKey=null;
@@ -1540,10 +1539,10 @@ function renderWeekView(){
       const icon=ca==='Sáng'?'☀️':ca==='Chiều'?'🌤️':'🌙';
       const b=cs.st==='thiếu'?['b-bad','THIẾU +'+cs.morePeople]:cs.st==='bù'?['b-mid','ĐẨY BÙ']:cs.st==='đủ'?['b-ok','ĐẠT']:['b-normal','HỖ TRỢ'];
       const header=`<div class="caHead">${icon} <b>CA ${ca.toUpperCase()}</b> — ${cs.members.length+cs.crab.length} người <span class="badge ${b[0]}">${b[1]}</span></div>`;
-      const cap=Math.round(cs.cap), tgt=Math.round(cs.quota), diff=cap-tgt;
+      const cap=Math.round(cs.cap), tgt=Math.round(cs.need), diff=cap-tgt; // chỉ tiêu mỗi ca = N/2
       const verdict = ca==='Tối'?'' : (diff>=0?`<span style="color:var(--ok);font-weight:700">ĐẠT${diff>0?' (dư '+diff+')':''}</span>`:`<span style="color:var(--bad);font-weight:700">THIẾU ${-diff} đơn</span>`);
       const perf= ca!=='Tối'
-        ? `<div class="metric"><b>Năng lực ${cap}</b> / Chỉ tiêu <b>${tgt}</b> đơn → ${verdict}${cs.quota>cs.need+1?` <span class="pill" style="color:#6a45d6">gánh bù +${Math.round(cs.quota-cs.need)}</span>`:''}</div>`
+        ? `<div class="metric"><b>Năng lực ${cap}</b> / Chỉ tiêu <b>${tgt}</b> đơn → ${verdict}${cs.quota>cs.need+1?` <span class="pill" style="color:#6a45d6">gánh bù ca kia +${Math.round(cs.quota-cs.need)}</span>`:''}</div>`
         : `<div class="metric">Hỗ trợ thêm ~${cap} đơn</div>`;
       const skCell=(p,k)=>{const train=trainMap[p.id]===k; const rt=train?Math.max(p.skills[k]||0,benchmark(k)*(S.config.trainAssist||0.35)):(p.skills[k]||0);const bm=benchmark(k);const ratio=bm>0?rt/bm:0;const col=ratio>=1?'var(--ok)':ratio>=0.6?'var(--warn)':'var(--bad)';
         return `<span style="display:inline-flex;align-items:center;gap:3px"><span class="sttrack" style="width:34px;flex:none"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span><b style="font-size:11px;color:${col}">${Math.round(rt)}</b>${train?'<span title="đang đào tạo">🎓</span>':''}</span>`;};
