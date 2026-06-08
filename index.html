@@ -94,6 +94,7 @@
   .catbl td:last-child{white-space:nowrap}
   .reinf{margin-top:6px;background:#eef3ff;border:1px solid #cdd9f5;border-radius:8px;padding:6px 8px;font-size:11.5px}
   .reinf>div{margin-top:3px;display:flex;flex-wrap:wrap;gap:2px}
+  .caRest{margin-top:6px;background:#f6f6f8;border:1px dashed #d4d4dd;border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--muted)}
   .caSec{border-top:2px solid var(--line);margin-top:9px;padding-top:7px}
   .caHead{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
   .caHead .badge{margin-left:auto}
@@ -1165,9 +1166,12 @@ function weakestStage(cov){
 function selectDay(N, crabD, pool, acc, trainMap){
   trainMap=trainMap||{};
   const caH=S.config.caHours, half=N/2;
-  const fair=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (soloRate(b.skills)-soloRate(a.skills));
-  const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TỐC ĐỘ TRỌN GÓI đơn/h (làm đủ 7 khâu)
+  const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
+  // CHẠY ĐƠN: ƯU TIÊN FULL-TIME chạy nền trước -> full-day trước -> ít ngày công trước -> trọn-gói NHANH hơn (giữ người giỏi cho đơn). PT chỉ bổ sung khi FT chưa đủ.
+  const fair=(a,b)=>((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || ((isFull(b)?1:0)-(isFull(a)?1:0)) || ((acc[a.id]||0)-(acc[b.id]||0)) || (pr(b)-pr(a));
+  // CRABTHING: ít ngày công trước -> PT trước (để FT chạy đơn) -> người trọn-gói CHẬM hơn làm crab trước
+  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(a)-pr(b));
   const onePersonCa=Math.max(1,(S.config.prod||20)*caH); // 1 người 1 ca làm được ~ 20×giờ đơn
   const selected=[], inSel=new Set();
   // kỹ năng có TRỢ LỰC đào tạo: người được bổ sung vào 1 khâu -> tối thiểu = chuẩn × hệ số đào tạo (vừa học vừa phụ việc)
@@ -1195,7 +1199,7 @@ function selectDay(N, crabD, pool, acc, trainMap){
     const mm=caTeam(needCa); const bn=mm.length?coverageOf(Math.max(1,half),mm).bottleneck.key:S.stages[0].key;
     const inCa=cand.filter(p=>p.caList.includes(needCa));
     const list=(inCa.length?inCa:cand).slice().sort((a,b)=>
-      ((isFull(b)?1:0)-(isFull(a)?1:0)) || fair(a,b) || ((b.skills[bn]||0)-(a.skills[bn]||0)) );
+      fair(a,b) || ((b.skills[bn]||0)-(a.skills[bn]||0)) );
     const p=list[0]; selected.push(p); inSel.add(p.id); p.caList.forEach(recompute);
   }
   // (2) ĐẢM BẢO MỌI KHÂU CÓ NGƯỜI LÀM ĐƯỢC (skill): nếu pool phủ được mà selected chưa -> thêm tối thiểu người đa kỹ năng
@@ -1205,7 +1209,7 @@ function selectDay(N, crabD, pool, acc, trainMap){
     const cand=pool.filter(p=>!inSel.has(p.id)); if(!cand.length)break;
     let pick=null,best=-1;
     cand.forEach(p=>{ let c=0; if(p.caList.includes('Sáng'))c+=uS.filter(k=>(p.skills[k]||0)>0).length; if(p.caList.includes('Chiều'))c+=uC.filter(k=>(p.skills[k]||0)>0).length;
-      if(c>0){const sc=c*1000+(isFull(p)?100:0)-(acc[p.id]||0); if(sc>best){best=sc;pick=p;}} });
+      if(c>0){const sc=c*1000+(p.type==='FT'?300:0)+(isFull(p)?100:0)-(acc[p.id]||0); if(sc>best){best=sc;pick=p;}} });
     if(!pick)break; selected.push(pick); inSel.add(pick.id); pick.caList.forEach(recompute);
   }
   // admin tích thêm người vào khâu nút thắt (nếu có) -> đưa vào team
@@ -1225,7 +1229,7 @@ function selectDay(N, crabD, pool, acc, trainMap){
   // CRABTHING từ người dư (chỉ còn khi ngày ĐỦ)
   const perCa=(S.config.crabRate||30)/2;
   const crabSel=[]; let crabCap=0;
-  pool.filter(p=>!inSel.has(p.id)).sort(fair).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSel.add(p.id);crabCap+=p.caList.length*perCa;} });
+  pool.filter(p=>!inSel.has(p.id)).sort(fairCrab).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSel.add(p.id);crabCap+=p.caList.length*perCa;} });
   const rest=pool.filter(p=>!inSel.has(p.id));
   // QUOTA linh hoạt: mỗi ca N/2; ca yếu thì ca khoẻ ĐẨY HIỆU SUẤT gánh bù
   const capS=thr['Sáng'], capCT=thr['Chiều']+thr['Tối'];
@@ -1548,6 +1552,10 @@ function renderWeekView(){
     const totalReg=r.ord.selected.length+r.crab.selected.length+r.finalRest.length;
     // ===== BỐ CỤC THEO CA: tiêu đề ca + trạng thái, năng suất ca, danh sách người + vị trí + thanh kỹ năng =====
     const trainMap=(r.sd&&r.sd.trainEff)||{};
+    const reg=S.reg[r.ds]||{};
+    const restedIds=(S.restDays&&S.restDays[r.ds])||[];
+    const dayMet = r.type!=='closed' && r.ord.capacity>=r.orders-1e-6 && !r.crab.short; // ngày đã ĐỦ -> mới cho nghỉ người dư
+    const restChk=(id,name,on)=>`<label class="restchk ${on?'on':''}"><input type="checkbox" ${on?'checked':''} onchange="toggleRest('${r.ds}','${id}',this.checked)">${esc(name)}${on?' ✓nghỉ':''}</label>`;
     const caSection = r.type!=='closed'&&r.caStat ? ['Sáng','Chiều','Tối'].map(ca=>{
       const cs=r.caStat[ca]; if(!cs)return '';
       if(ca==='Tối'&&!cs.members.length&&!cs.crab.length)return '';
@@ -1574,14 +1582,13 @@ function renderWeekView(){
       const crabRow=cs.crab.length?`<tr><td>🦀 Crabthing</td><td>${cs.crab.map(p=>esc(p.name)).join('<br>')}</td><td>${Math.round((S.config.crabRate||30)/2)} SKU</td></tr>`:'';
       const trainedHere=cs.members.filter(p=>trainMap[p.id]);
       const trainNote = (ca!=='Tối'&&trainedHere.length)?`<div class="reinf">🎓 Đã dồn ${trainedHere.length} người dư vào khâu nút thắt <b>${stageName(cs.bnKey)}</b> (trợ lực ${Math.round((S.config.trainAssist||0.35)*100)}% chuẩn + đào tạo): ${trainedHere.map(p=>esc(p.name)).join(', ')}</div>`:'';
-      return `<div class="caSec">${header}${perf}<table class="catbl"><thead><tr><th>Khâu / quy trình</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${trainNote}</div>`;
+      // CHO NGHỈ theo ĐÚNG CA: người dư đăng ký ca này (chỉ khi ngày đã đủ) + người đã xác nhận nghỉ thuộc ca này
+      const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
+      const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
+      const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
+      return `<div class="caSec">${header}${perf}<table class="catbl"><thead><tr><th>Khâu / quy trình</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${trainNote}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
-    const dayMet = r.type!=='closed' && r.ord.capacity>=r.orders-1e-6 && !r.crab.short; // ngày đã ĐỦ -> mới cho nghỉ người dư
-    const restedIds=(S.restDays&&S.restDays[r.ds])||[];
-    const spareChk = dayMet ? r.finalRest.map(p=>`<label class="restchk"><input type="checkbox" onchange="toggleRest('${r.ds}','${p.id}',this.checked)">${esc(p.name)}</label>`).join('') : '';
-    const restedChk=restedIds.map(id=>{const s=S.staff.find(x=>x.id===id);return s?`<label class="restchk on"><input type="checkbox" checked onchange="toggleRest('${r.ds}','${id}',this.checked)">${esc(s.name)} ✓nghỉ</label>`:''}).join('');
-    const restHtml = (spareChk||restedChk) ? `<div class="metric" style="color:var(--muted)"><b>Cho nghỉ</b> <small class="hint">(tích = xác nhận nghỉ, ghi vào chấm công)</small>: ${spareChk}${restedChk}</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
     const stagesHtml = (r.type!=='closed') ? `<div class="stages"><div class="stlegend">Tốc độ team theo khâu — đơn/h · độ phủ</div>${S.stages.map(s=>{
         const rt=cov.stageRate[s.key]||0;
@@ -1605,7 +1612,6 @@ function renderWeekView(){
       ${caSection}
       ${stagesHtml}
       ${crabWarn}
-      ${restHtml}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
     </div>`;
   }).join('');
