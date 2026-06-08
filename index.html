@@ -81,6 +81,10 @@
   .modebtn{border:1px solid var(--line);background:#fff;color:var(--muted);padding:8px 14px;border-radius:9px;font-weight:700;cursor:pointer}
   .modebtn.on{background:var(--brand);color:#fff;border-color:var(--brand)}
   .schip{font-size:10.5px;background:var(--chip);border-radius:6px;padding:2px 6px;margin:2px auto;display:block;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+  .schedtbl td,.schedtbl th{border:1px solid var(--line);vertical-align:top;padding:4px 7px}
+  .schedtbl .stepcell{text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap;font-size:12px;z-index:1}
+  .schedtbl .caband td{font-weight:800;font-size:12px}
+  .schedtbl .closedc{background:#f4f5f8;text-align:center;color:var(--muted)}
   .restchk{display:inline-flex;align-items:center;gap:3px;margin:2px 8px 2px 0;cursor:pointer;font-size:11.5px}
   .restchk.on{color:#8a6500;font-weight:700}
   .caSec{border-top:2px solid var(--line);margin-top:9px;padding-top:7px}
@@ -974,36 +978,47 @@ function renderWeekSchedule(){
   if(!schedWeek)schedWeek=fmt(mondayOf(new Date()));
   const lb=document.getElementById('schedLabel'); if(lb)lb.textContent='Tuần '+weekLabel(schedWeek);
   const {result}=computeWeek(schedWeek);
-  // bố cục mới: NHÓM THEO CA, mỗi ngày liệt kê người trong từng ca + vị trí
-  const line=(name,pos)=>`<div style="text-align:left;font-size:11.5px;padding:2px 0;border-bottom:1px dashed var(--line)">${esc(name)}${pos?`<br><span style="color:var(--muted)">${esc(pos)}</span>`:''}</div>`;
-  let html='<table style="min-width:920px"><thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff;min-width:96px">Ca</th>';
+  // BỐ CỤC THEO QUY TRÌNH: cột dọc = 7 công đoạn (thứ tự ra đơn), mỗi công đoạn liệt kê người làm
+  const nm=n=>`<div style="text-align:left;font-size:11.5px;padding:1px 0">${esc(n)}</div>`;
+  const roleOf=(cs,id)=>(cs&&cs.roles&&cs.roles[id])||[];
+  let html='<table class="schedtbl" style="min-width:960px"><thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff;min-width:120px;z-index:2">Công đoạn / Ca</th>';
   result.forEach((r,i)=>{
     const tieu = r.type==='closed' ? 'Kho nghỉ'
       : `☀️ ${Math.round(r.caStat['Sáng'].quota)} · 🌤️ ${Math.round(r.caStat['Chiều'].quota)} đơn${r.crabD>0?`<br>🦀 ${Math.round(r.crabD)} SKU`:''}`;
     html+=`<th>${DOW2[i]}<br><b>${r.d.getDate()}/${r.d.getMonth()+1}</b><br><span class="pill">${tieu}</span></th>`;
   });
   html+='</tr></thead><tbody>';
-  const rowFor=(label,bg,cellFn)=>{
-    let row=`<tr><td style="text-align:left;font-weight:700;position:sticky;left:0;background:#fff">${label}</td>`;
-    result.forEach(r=>{ row+= r.type==='closed' ? '<td style="background:#f4f5f8;text-align:center;color:var(--muted)">—</td>' : `<td style="vertical-align:top;background:${bg}">${cellFn(r)||'<span class="pill">—</span>'}</td>`; });
+  const band=lbl=>`<tr class="caband"><td class="stepcell" style="background:var(--chip)">${lbl}</td>${result.map(()=>'<td style="background:var(--chip)"></td>').join('')}</tr>`;
+  const stepRow=(label,bg,cellFn)=>{
+    let row=`<tr><td class="stepcell">${label}</td>`;
+    result.forEach(r=>{ row+= r.type==='closed' ? '<td class="closedc">—</td>' : `<td style="background:${bg}">${cellFn(r)||'<span class="pill">—</span>'}</td>`; });
     return row+'</tr>';
   };
-  // Ca sáng, Ca chiều
-  [['Sáng','☀️ Ca sáng'],['Chiều','🌤️ Ca chiều']].forEach(([ca,lbl])=>{
-    html+=rowFor(lbl,'var(--okbg)',r=>{const cs=r.caStat[ca];return cs.members.map(p=>{const roles=(cs.roles&&cs.roles[p.id])||[];return line(p.name, roles.length?roles.map(stageName).join(' + '):'Linh hoạt');}).join('');});
+  // ☀️ CA SÁNG / 🌤️ CA CHIỀU — từng công đoạn
+  [['Sáng','☀️ CA SÁNG'],['Chiều','🌤️ CA CHIỀU']].forEach(([ca,lbl])=>{
+    html+=band(lbl);
+    S.stages.forEach(s=>{
+      html+=stepRow(esc(s.name),'var(--okbg)',r=>{const cs=r.caStat[ca];if(!cs)return '';return cs.members.filter(p=>roleOf(cs,p.id).includes(s.key)).map(p=>nm(p.name)).join('');});
+    });
+    // người chưa được gán khâu cụ thể
+    if(result.some(r=>r.type!=='closed'&&r.caStat[ca]&&r.caStat[ca].members.some(p=>!roleOf(r.caStat[ca],p.id).length)))
+      html+=stepRow('Linh hoạt','#f5faf2',r=>{const cs=r.caStat[ca];if(!cs)return '';return cs.members.filter(p=>!roleOf(cs,p.id).length).map(p=>nm(p.name)).join('');});
   });
-  // Ca tối nếu có
-  if(result.some(r=>r.type!=='closed'&&r.caStat['Tối']&&r.caStat['Tối'].members.length))
-    html+=rowFor('🌙 Ca tối','#fff',r=>r.caStat['Tối'].members.map(p=>line(p.name,'Hỗ trợ')).join(''));
-  // Crabthing
-  if(result.some(r=>r.crabD>0))
-    html+=rowFor('🦀 Crabthing','#fff7ef',r=>r.crab.selected.map(p=>line(p.name, p.caList.map(c=>CASHORT[c]).join('+')+' · '+Math.round(p.caList.length*((S.config.crabRate||30)/2))+' SKU')).join(''));
-  // Nghỉ có phép
+  // 🌙 Ca tối
+  if(result.some(r=>r.type!=='closed'&&r.caStat['Tối']&&r.caStat['Tối'].members.length)){
+    html+=band('🌙 CA TỐI (hỗ trợ)');
+    html+=stepRow('Hỗ trợ','#fff',r=>{const cs=r.caStat['Tối'];return cs?cs.members.map(p=>nm(p.name)).join(''):'';});
+  }
+  // 🦀 Crabthing
+  if(result.some(r=>r.crabD>0)){
+    html+=band('🦀 CRABTHING (SKU)');
+    html+=stepRow('Làm Crabthing','#fff7ef',r=>r.crab.selected.map(p=>nm(p.name+' ('+p.caList.map(c=>CASHORT[c]).join('+')+')')).join(''));
+  }
+  // Nghỉ / Dự phòng
   if(result.some(r=>((S.restDays&&S.restDays[r.ds])||[]).length))
-    html+=rowFor('Nghỉ (có phép)','var(--warnbg)',r=>((S.restDays&&S.restDays[r.ds])||[]).map(id=>{const s=S.staff.find(x=>x.id===id);return s?line(s.name,''):'';}).join(''));
-  // Dự phòng (đăng ký nhưng chưa xếp/chưa xác nhận nghỉ)
+    html+=stepRow('Nghỉ (có phép)','var(--warnbg)',r=>((S.restDays&&S.restDays[r.ds])||[]).map(id=>{const s=S.staff.find(x=>x.id===id);return s?nm(s.name):'';}).join(''));
   if(result.some(r=>r.type!=='closed'&&r.finalRest.length))
-    html+=rowFor('Dự phòng','#fff',r=>r.finalRest.map(p=>line(p.name,'')).join(''));
+    html+=stepRow('Dự phòng (chưa xếp)','#fafafa',r=>r.finalRest.map(p=>nm(p.name)).join(''));
   html+='</tbody></table>';
   box.innerHTML=html;
 }
