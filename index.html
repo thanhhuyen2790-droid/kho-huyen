@@ -167,22 +167,19 @@
   <!-- TAB: NHÂN SỰ -->
   <section class="tab" id="tab-staff">
     <div class="card">
-      <h2>Bảng nhân sự</h2>
-      <p class="sub">Thêm/xoá nhân sự. Chấm điểm kỹ năng từng khâu ở bảng bên dưới.</p>
+      <h2>👥 Nhân sự — Năng suất &amp; kỹ năng theo khâu</h2>
+      <p class="sub"><b>Năng suất (đơn/h)</b> là gốc — mặc định 20, chỉnh cho người nhanh/chậm. <b>Điểm 1–10</b> mỗi khâu là phụ để ghép team (0 = không làm được). Người <b>năng suất &amp; kỹ năng cao tự xếp lên đầu</b>. Tích "Làm" để tạm cho nghỉ dài hạn.</p>
       <div class="toolbar">
-        <input id="ns-name" placeholder="Tên nhân sự" style="max-width:220px">
-        <select id="ns-type" style="max-width:140px"><option value="FT">Full-time</option><option value="PT">Part-time</option></select>
-        <button class="btn" onclick="addStaff()">+ Thêm</button>
+        <input id="ns-name" placeholder="Tên nhân sự mới" style="max-width:220px">
+        <select id="ns-type" style="max-width:150px"><option value="FT">Full-time</option><option value="PT">Part-time</option></select>
+        <button class="btn" onclick="addStaff()">+ Thêm nhân sự</button>
       </div>
-      <table>
-        <thead><tr><th>#</th><th>Tên</th><th>Loại</th><th>Đang làm</th><th></th></tr></thead>
-        <tbody id="staffBody"></tbody>
-      </table>
+      <div class="schedgrid"><table id="skillTable"></table></div>
     </div>
     <div class="card">
-      <h2>🎯 Năng suất &amp; kỹ năng theo khâu</h2>
-      <p class="sub"><b>Năng suất (đơn/h)</b> là gốc quyết định một người chạy được bao nhiêu đơn — mặc định 20, chỉnh được cho người làm nhanh/chậm hơn. <b>Điểm kỹ năng 1–10</b> mỗi khâu chỉ là yếu tố phụ để ghép team đủ kỹ năng (0 = không làm được). Ô càng xanh = càng giỏi.</p>
-      <div class="schedgrid"><table id="skillTable"></table></div>
+      <h2 id="attTitle">🗓️ Chấm công nhân sự</h2>
+      <p class="sub">Tự tổng hợp từ phân bổ (theo tháng đang chọn ở tab Chỉ tiêu đơn). <b>Số</b> = số ca làm trong ngày (🦀 = làm Crabthing) · <b>N</b> = đăng ký nhưng được cho nghỉ (đã xác nhận) · <b>·</b> = đăng ký nhưng không được xếp.</p>
+      <div class="schedgrid" id="attBody"></div>
     </div>
   </section>
 
@@ -280,21 +277,6 @@
   <!-- TAB: PHÂN BỔ NHÂN SỰ -->
   <section class="tab" id="tab-plan">
     <div class="card">
-      <h2 id="perfTitle">📊 Hiệu suất &amp; ngày công nhân sự</h2>
-      <p class="sub">Tổng số ca được phân trong tháng cho mỗi người — xem ai làm nhiều/ít để cân đối lương. (Theo tháng đang chọn ở tab Chỉ tiêu đơn.)</p>
-      <div id="perfBody"></div>
-    </div>
-    <div class="card">
-      <h2 id="attTitle">🗓️ Bảng chấm công tháng</h2>
-      <p class="sub">Tự tổng hợp từ phân bổ. <b>Số</b> = số ca làm trong ngày (🦀 = làm Crabthing) · <b>N</b> = đăng ký nhưng được cho nghỉ (đã xác nhận) · <b>·</b> = đăng ký nhưng không được xếp (chưa xác nhận nghỉ).</p>
-      <div class="schedgrid" id="attBody"></div>
-    </div>
-    <div class="card">
-      <h2>🧩 Độ phủ kỹ năng &amp; rủi ro đào tạo chéo</h2>
-      <p class="sub">Khâu nào quá ít người giỏi là rủi ro — người đó nghỉ là tắc cả dây chuyền. Nên đào tạo thêm cho các khâu "mỏng".</p>
-      <div id="skillRisk"></div>
-    </div>
-    <div class="card">
       <h2>Phân bổ nhân sự &amp; cảnh báo</h2>
       <p class="sub">Xanh = đủ người · Vàng = thừa · Đỏ = thiếu. Xem tổng quan theo tháng, bấm một tuần để xem chi tiết.</p>
       <div class="toolbar">
@@ -315,6 +297,16 @@
         <p class="sub">Engine ưu tiên người ít ca trước để lương đồng đều.</p>
         <div id="fairness"></div>
       </div>
+    </div>
+    <div class="card">
+      <h2 id="perfTitle">📊 Hiệu suất &amp; ngày công nhân sự</h2>
+      <p class="sub">Tổng số ca được phân trong tháng cho mỗi người — xem ai làm nhiều/ít để cân đối lương. (Theo tháng đang chọn ở tab Chỉ tiêu đơn.)</p>
+      <div id="perfBody"></div>
+    </div>
+    <div class="card">
+      <h2>🧩 Độ phủ kỹ năng &amp; rủi ro đào tạo chéo</h2>
+      <p class="sub">Khâu nào quá ít người giỏi là rủi ro — người đó nghỉ là tắc cả dây chuyền. Nên đào tạo thêm cho các khâu "mỏng".</p>
+      <div id="skillRisk"></div>
     </div>
   </section>
 
@@ -367,6 +359,7 @@ const KEY='khoHuyenV1';
 const CA=['Sáng','Chiều','Tối'];
 const CASHORT={'Sáng':'S','Chiều':'C','Tối':'T'};
 const DOW=['Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy','Chủ Nhật'];
+const DOW2=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'];
 // Đơn/ngày thường theo tháng, lấy từ file "Đặt sản xuất - Note 2026"
 const DEF_SHOPEE=[299.9,293.7,221.9,202.7,287.8,340.9,517.8,1124.7,459.9,215.3,162.0,294.8];
 const DEF_TIKTOK=[116.6,114.2,86.3,78.8,111.9,132.6,201.4,437.4,178.9,83.7,63.0,114.6];
@@ -655,6 +648,7 @@ function go(t,btn){
   if(t==='approve')renderApprove();
   if(t==='demand')renderDemand();
   if(t==='config')renderBackups();
+  if(t==='staff')renderAttendance();
 }
 
 /* ---------- STAFF ---------- */
@@ -663,23 +657,15 @@ function addStaff(){
   if(!name)return alert('Nhập tên nhân sự');
   S.staff.push({id:id(),name,type:document.getElementById('ns-type').value,active:true,prod:20,skills:defaultSkills()});
   document.getElementById('ns-name').value='';
-  saveAll();renderStaff();renderSkillMatrix();
+  saveAll();renderSkillMatrix();renderRegTable();
 }
-function delStaff(i){if(confirm('Xoá nhân sự này?')){S.staff.splice(i,1);saveAll();renderStaff();renderSkillMatrix();renderRegTable()}}
-function renderStaff(){
-  const b=document.getElementById('staffBody');
-  b.innerHTML=S.staff.map((s,i)=>`<tr>
-    <td>${i+1}</td>
-    <td><input value="${esc(s.name)}" onchange="S.staff[${i}].name=this.value;saveAll();renderSkillMatrix();renderRegTable()"></td>
-    <td><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${s.type==='FT'?'selected':''}>FT</option><option ${s.type==='PT'?'selected':''}>PT</option></select></td>
-    <td style="text-align:center"><input type="checkbox" ${s.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll()"></td>
-    <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
-  </tr>`).join('');
-}
+function delStaff(i){if(confirm('Xoá nhân sự "'+(S.staff[i]&&S.staff[i].name)+'"?')){S.staff.splice(i,1);saveAll();renderSkillMatrix();renderRegTable()}}
+function renderStaff(){ /* gộp vào renderSkillMatrix */ }
 function skillCellBg(v){v=+v||0;
   if(v<=0)return '#fbe3e1'; if(v<=3)return '#fde3c8'; if(v<=5)return '#fdf3d0'; if(v<=7)return '#e7f3da'; return '#d3efde';}
 function setSkill(i,key,val){ S.staff[i].skills[key]=Math.max(0,Math.min(10,+val||0)); saveAll(); renderSkillMatrix(); }
-function setProd(i,val){ S.staff[i].prod=Math.max(1,+val||20); saveAll(); }
+function setProd(i,val){ S.staff[i].prod=Math.max(1,+val||20); saveAll(); renderSkillMatrix(); }
+function staffScore(p){ const m=S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0)/Math.max(1,S.stages.length); return m + (p.prod||20)/10; }
 function setStageRate(i,v){ S.stages[i].rate=Math.max(1,+v||1); saveAll(); }
 function renderStageRates(){
   const b=document.getElementById('stageRates'); if(!b)return;
@@ -689,11 +675,17 @@ function renderStageRates(){
 }
 function renderSkillMatrix(){
   const t=document.getElementById('skillTable'); if(!t)return;
-  const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th title="Năng suất đơn/giờ">Năng suất<br><span class="pill">đơn/h</span></th>${S.stages.map(s=>`<th title="${esc(s.name)}">${esc(s.name)}</th>`).join('')}</tr></thead>`;
-  const body=S.staff.map((p,i)=>`<tr><td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff">${esc(p.name)}${p.active?'':' <small class="hint">(nghỉ)</small>'}</td><td style="text-align:center;padding:3px"><input type="number" min="1" value="${p.prod||20}" style="width:56px;text-align:center;border:1px solid var(--brand);font-weight:600" onchange="setProd(${i},this.value)"></td>${S.stages.map(s=>{
-    const v=p.skills[s.key]??0;
-    return `<td style="text-align:center;padding:3px"><input type="number" min="0" max="10" value="${v}" style="width:46px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;
-  }).join('')}</tr>`).join('');
+  // sắp xếp: người ĐANG LÀM trước, rồi điểm (kỹ năng TB + năng suất) cao lên đầu
+  const order=S.staff.map((p,i)=>i).sort((a,b)=>{const A=S.staff[a],B=S.staff[b];return ((B.active?1:0)-(A.active?1:0)) || (staffScore(B)-staffScore(A));});
+  const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th>Loại</th><th title="Năng suất đơn/giờ">Năng suất<br><span class="pill">đơn/h</span></th>${S.stages.map(s=>`<th title="${esc(s.name)}">${esc(s.name)}</th>`).join('')}<th>Làm</th><th></th></tr></thead>`;
+  const body=order.map(i=>{const p=S.staff[i];return `<tr ${p.active?'':'style="opacity:.5"'}>
+    <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
+    <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
+    <td style="text-align:center;padding:3px"><input type="number" min="1" value="${p.prod||20}" style="width:56px;text-align:center;border:1px solid var(--brand);font-weight:600" onchange="setProd(${i},this.value)"></td>
+    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" max="10" value="${v}" style="width:46px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
+    <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
+    <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
+  </tr>`}).join('');
   t.innerHTML=head+'<tbody>'+body+'</tbody>';
 }
 
@@ -886,7 +878,7 @@ function toggleReg(sid,ds,ca,on){
 function renderRegTable(){
   defaultWeek();
   const dates=weekDates(); const act=S.staff.filter(s=>s.active);
-  const head=`<thead><tr><th style="text-align:left">Nhân sự</th>${dates.map((d,i)=>`<th>${DOW[i].replace('Thứ ','T')}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
+  const head=`<thead><tr><th style="text-align:left">Nhân sự</th>${dates.map((d,i)=>`<th>${DOW2[i]}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
   const body=act.map(s=>`<tr><td style="text-align:left;font-weight:600">${esc(s.name)} <small class="hint">${s.type}</small></td>${dates.map(d=>{
     const ds=fmt(d); const reg=(S.reg[ds]&&S.reg[ds][s.id])||[];
     return `<td><div class="ca-cell">${CA.map(c=>`<label title="${c}"><input type="checkbox" ${reg.includes(c)?'checked':''} onchange="toggleReg('${s.id}','${ds}','${c}',this.checked)">${CASHORT[c]}</label>`).join('')}</div></td>`;
@@ -911,35 +903,36 @@ function renderWeekSchedule(){
   if(!schedWeek)schedWeek=fmt(mondayOf(new Date()));
   const lb=document.getElementById('schedLabel'); if(lb)lb.textContent='Tuần '+weekLabel(schedWeek);
   const {result}=computeWeek(schedWeek);
-  let html='<table style="min-width:880px"><thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th>';
+  // bố cục mới: NHÓM THEO CA, mỗi ngày liệt kê người trong từng ca + vị trí
+  const line=(name,pos)=>`<div style="text-align:left;font-size:11.5px;padding:2px 0;border-bottom:1px dashed var(--line)">${esc(name)}${pos?`<br><span style="color:var(--muted)">${esc(pos)}</span>`:''}</div>`;
+  let html='<table style="min-width:920px"><thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff;min-width:96px">Ca</th>';
   result.forEach((r,i)=>{
     const tieu = r.type==='closed' ? 'Kho nghỉ'
       : `☀️ ${Math.round(r.caStat['Sáng'].quota)} · 🌤️ ${Math.round(r.caStat['Chiều'].quota)} đơn${r.crabD>0?`<br>🦀 ${Math.round(r.crabD)} SKU`:''}`;
-    html+=`<th>${DOW[i].replace('Thứ ','T')} ${r.d.getDate()}/${r.d.getMonth()+1}<br><span class="pill">${tieu}</span></th>`;
+    html+=`<th>${DOW2[i]}<br><b>${r.d.getDate()}/${r.d.getMonth()+1}</b><br><span class="pill">${tieu}</span></th>`;
   });
   html+='</tr></thead><tbody>';
-  S.staff.filter(s=>s.active).forEach(s=>{
-    const cells=result.map(r=>{
-      if(r.type==='closed')return '<td style="background:#f4f5f8"></td>';
-      const rested=((S.restDays&&S.restDays[r.ds])||[]).includes(s.id);
-      if(rested)return '<td style="text-align:center;background:var(--warnbg)"><span class="pill">Nghỉ ✓</span></td>';
-      const inCrab=r.crab.selected.find(p=>p.id===s.id);
-      if(inCrab)return `<td style="text-align:center;background:#fff7ef"><div class="schip">🦀 Crabthing</div><span class="pill">${inCrab.caList.map(c=>CASHORT[c]).join('+')} · ${Math.round(inCrab.caList.length*((S.config.crabRate||30)/2))} SKU</span></td>`;
-      const inOrd=r.ord.selected.find(p=>p.id===s.id);
-      if(inOrd){
-        const parts=inOrd.caList.map(c=>{
-          const cs=r.caStat[c]; const roles=(cs&&cs.roles&&cs.roles[s.id])||[];
-          const pos=c==='Tối'?'Hỗ trợ':(roles.length?roles.map(stageName).join(' + '):'Linh hoạt');
-          return `<div class="schip"><b>${CASHORT[c]||c}</b>: ${esc(pos)}</div>`;
-        }).join('');
-        return `<td style="text-align:center;background:var(--okbg)">${parts}</td>`;
-      }
-      const spare=r.finalRest.find(p=>p.id===s.id);
-      if(spare)return '<td style="text-align:center;color:var(--muted)"><span class="pill">Dự phòng</span></td>';
-      return '<td></td>';
-    });
-    html+=`<tr><td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap">${esc(s.name)}</td>${cells.join('')}</tr>`;
+  const rowFor=(label,bg,cellFn)=>{
+    let row=`<tr><td style="text-align:left;font-weight:700;position:sticky;left:0;background:#fff">${label}</td>`;
+    result.forEach(r=>{ row+= r.type==='closed' ? '<td style="background:#f4f5f8;text-align:center;color:var(--muted)">—</td>' : `<td style="vertical-align:top;background:${bg}">${cellFn(r)||'<span class="pill">—</span>'}</td>`; });
+    return row+'</tr>';
+  };
+  // Ca sáng, Ca chiều
+  [['Sáng','☀️ Ca sáng'],['Chiều','🌤️ Ca chiều']].forEach(([ca,lbl])=>{
+    html+=rowFor(lbl,'var(--okbg)',r=>{const cs=r.caStat[ca];return cs.members.map(p=>{const roles=(cs.roles&&cs.roles[p.id])||[];return line(p.name, roles.length?roles.map(stageName).join(' + '):'Linh hoạt');}).join('');});
   });
+  // Ca tối nếu có
+  if(result.some(r=>r.type!=='closed'&&r.caStat['Tối']&&r.caStat['Tối'].members.length))
+    html+=rowFor('🌙 Ca tối','#fff',r=>r.caStat['Tối'].members.map(p=>line(p.name,'Hỗ trợ')).join(''));
+  // Crabthing
+  if(result.some(r=>r.crabD>0))
+    html+=rowFor('🦀 Crabthing','#fff7ef',r=>r.crab.selected.map(p=>line(p.name, p.caList.map(c=>CASHORT[c]).join('+')+' · '+Math.round(p.caList.length*((S.config.crabRate||30)/2))+' SKU')).join(''));
+  // Nghỉ có phép
+  if(result.some(r=>((S.restDays&&S.restDays[r.ds])||[]).length))
+    html+=rowFor('Nghỉ (có phép)','var(--warnbg)',r=>((S.restDays&&S.restDays[r.ds])||[]).map(id=>{const s=S.staff.find(x=>x.id===id);return s?line(s.name,''):'';}).join(''));
+  // Dự phòng (đăng ký nhưng chưa xếp/chưa xác nhận nghỉ)
+  if(result.some(r=>r.type!=='closed'&&r.finalRest.length))
+    html+=rowFor('Dự phòng','#fff',r=>r.finalRest.map(p=>line(p.name,'')).join(''));
   html+='</tbody></table>';
   box.innerHTML=html;
 }
@@ -990,7 +983,7 @@ function renderUserReg(){
   else if(lastP&&lastP.status==='approved')banner=`<div class="ok-banner">✔ Đăng ký tuần này đã được phê duyệt.</div>`;
   document.getElementById('userBanner').innerHTML=banner;
   // grid
-  const head=`<thead><tr>${dates.map((d,i)=>`<th>${DOW[i].replace('Thứ ','T')}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
+  const head=`<thead><tr>${dates.map((d,i)=>`<th>${DOW2[i]}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
   const row=`<tr>${dates.map(d=>{const ds=fmt(d);const pk=userDraft[ds]||[];
     return `<td><div class="ca-cell">${CA.map(c=>`<label title="${c}"><input type="checkbox" ${pk.includes(c)?'checked':''} onchange="utoggle('${ds}','${c}',this.checked)">${CASHORT[c]}</label>`).join('')}</div></td>`;
   }).join('')}</tr>`;
@@ -1344,7 +1337,7 @@ function monthAttendance(year,month){
 function renderAttendance(){
   const box=document.getElementById('attBody'); if(!box)return;
   const y=S.demand.year, m=S.demand.month;
-  const tt=document.getElementById('attTitle'); if(tt)tt.textContent=`🗓️ Bảng chấm công tháng ${m}/${y}`;
+  const tt=document.getElementById('attTitle'); if(tt)tt.textContent=`🗓️ Chấm công nhân sự — Tháng ${m}/${y}`;
   const dim=new Date(y,m,0).getDate();
   const att=monthAttendance(y,m);
   const act=S.staff.filter(s=>s.active);
@@ -1402,7 +1395,7 @@ function renderMonthView(){
           const rs={ok:['mok','Đủ'],short_skill:['mok','Đủ'],surplus:['mwarn','Thừa'],short_people:['mbad','Thiếu'],short_crab:['mbad','Thiếu'],short_both:['mbad','Thiếu'],closed:['mclosed','Nghỉ']}[x.kind]||['mbad','—'];
           const cls=rs[0], lbl=rs[1];
           return `<div class="mday ${cls}" onclick="openWeek('${ws}')" title="Bấm để xem chi tiết tuần">
-            <div class="mday-d">${DOW[i].replace('Thứ ','T')} ${x.d.getDate()}/${x.d.getMonth()+1}</div>
+            <div class="mday-d">${DOW2[i]} ${x.d.getDate()}/${x.d.getMonth()+1}</div>
             <div class="mday-s">${lbl}</div>
             <div class="mday-o">${x.kind==='closed'?'—':Math.round(x.orders)+' đơn'}</div>
           </div>`;
@@ -1508,7 +1501,6 @@ function pshiftWeek(n){ const c=document.getElementById('plan-week'); const d=pa
 function renderPlan(){
   defaultPlanWeek();
   renderPerf();
-  renderAttendance();
   renderSkillRisk();
   document.getElementById('monthView').style.display=planMode==='month'?'':'none';
   document.getElementById('weekView').style.display=planMode==='week'?'':'none';
@@ -1535,7 +1527,7 @@ function esc(s){return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':
 function renderAll(){
   document.getElementById('cf-cah').value=S.config.caHours;
   document.getElementById('cf-fd').value=S.config.fullDay;
-  fillMonthSelect();renderStaff();renderSkillMatrix();renderStageRates();renderDemand();
+  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();
   populateUserStaff();renderReg();updateNavBadge();
 }
 // nạp dữ liệu cloud (nếu có) rồi mở app
