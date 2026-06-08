@@ -185,8 +185,8 @@
   <!-- TAB: NHÂN SỰ -->
   <section class="tab" id="tab-staff">
     <div class="card">
-      <h2>👥 Nhân sự — Tốc độ làm việc theo khâu (đơn/h)</h2>
-      <p class="sub">Mỗi ô = <b>số đơn/giờ</b> người đó làm được ở khâu đó (0 = không làm được). Số nhỏ dưới tên khâu là <b>chuẩn tham chiếu</b> (người làm tốt) — ô càng xanh = càng gần/vượt chuẩn, đỏ = chậm. Người mới mặc định = chuẩn, bạn đo thực tế rồi chỉnh. Người <b>tổng tốc độ cao tự xếp lên đầu</b>.</p>
+      <h2>👥 Nhân sự — Tốc độ trọn gói &amp; theo khâu (đơn/h)</h2>
+      <p class="sub">Cột <b>⭐ Trọn gói</b> = số đơn/giờ khi <b>1 người làm trọn cả 7 khâu</b> cho mỗi đơn (TB <b>20</b>, chỉnh tăng/giảm theo từng người). <b>Đây là yếu tố CHÍNH</b> để tính cần bao nhiêu người mỗi ngày: <i>người cần ≈ số đơn ÷ (20 × giờ)</i>. Các cột khâu (Xác nhận, Nhặt…) = tốc độ riêng từng bước, dùng làm <b>cơ sở phụ</b> để xét <b>bổ sung ai vào vị trí nào cho team tối ưu</b> khi cần tăng tốc. Người mới mặc định = chuẩn, bạn đo thực tế rồi chỉnh.</p>
       <div class="toolbar">
         <input id="ns-name" placeholder="Tên nhân sự mới" style="max-width:220px">
         <select id="ns-type" style="max-width:150px"><option value="FT">Full-time</option><option value="PT">Part-time</option></select>
@@ -530,7 +530,7 @@ function migrate(o){
     } else {
       o.stages.forEach(st=>{ if(s.skills[st.key]==null)s.skills[st.key]=bm[st.key]; });
     }
-    delete s.prod;
+    if(!(s.prod>0))s.prod=(o.config&&o.config.prod)||20; // tốc độ TRỌN GÓI (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ
   });
   o._skillUnit='donh';
   return o;
@@ -782,7 +782,8 @@ function renderStaff(){ /* gộp vào renderSkillMatrix */ }
 function skillCellBg(v,bm){v=+v||0;const r=bm>0?v/bm:0;
   if(v<=0)return '#fbe3e1'; if(r<0.4)return '#fde3c8'; if(r<0.7)return '#fdf3d0'; if(r<1)return '#e7f3da'; return '#d3efde';}
 function setSkill(i,key,val){ S.staff[i].skills[key]=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
-function staffScore(p){ return soloRate(p.skills); } // năng suất dây chuyền (đơn/h) — cao thì xếp lên đầu
+function setProd(i,val){ S.staff[i].prod=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
+function staffScore(p){ return (p.prod>0?+p.prod:0)||soloRate(p.skills); } // tốc độ trọn gói (đơn/h) — cao thì xếp lên đầu
 function setStageRate(i,v){ S.stages[i].rate=Math.max(1,+v||1); saveAll(); renderStageRates(); renderSkillMatrix(); }
 function renderStageRates(){
   const b=document.getElementById('stageRates'); if(!b)return;
@@ -794,11 +795,12 @@ function renderSkillMatrix(){
   const t=document.getElementById('skillTable'); if(!t)return;
   // sắp xếp: người ĐANG LÀM trước, rồi năng suất dây chuyền (đơn/h) cao lên đầu
   const order=S.staff.map((p,i)=>i).sort((a,b)=>{const A=S.staff[a],B=S.staff[b];return ((B.active?1:0)-(A.active?1:0)) || (staffScore(B)-staffScore(A));});
-  const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th>Loại</th>${S.stages.map(s=>`<th title="Chuẩn ${s.rate} đơn/h">${esc(s.name)}<br><span class="pill">${s.rate}</span></th>`).join('')}<th>Làm</th><th></th></tr></thead>`;
+  const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th>Loại</th><th style="background:#eef4ff" title="Tốc độ khi 1 người làm TRỌN cả 7 khâu cho mỗi đơn — TB 20 đơn/h. ĐÂY là số CHÍNH để tính cần bao nhiêu người.">⭐ Trọn gói<br><span class="pill" style="background:#1d6fe0;color:#fff">đơn/h</span></th>${S.stages.map(s=>`<th title="Tốc độ riêng khâu này (để tối ưu vị trí) — chuẩn ${s.rate} đơn/h">${esc(s.name)}<br><span class="pill">${s.rate}</span></th>`).join('')}<th>Làm</th><th></th></tr></thead>`;
   const body=order.map(i=>{const p=S.staff[i];return `<tr ${p.active?'':'style="opacity:.5"'}>
     <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
-    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
+    <td style="text-align:center;padding:3px;background:#eef4ff"><input type="number" min="0" value="${p.prod!=null?p.prod:20}" title="Tốc độ trọn gói (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ. TB 20." style="width:64px;text-align:center;font-weight:700;border:1px solid #9bbcf0;background:#fff" onchange="setProd(${i},this.value)"></td>
+    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
     <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
     <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
@@ -845,8 +847,8 @@ function benchmark(k){const s=S.stages.find(x=>x.key===k);return s?s.rate:1;}
 function avgStageRate(k){const a=S.staff.filter(s=>s.active);return a.length?a.reduce((x,s)=>x+(s.skills[k]||0),0)/a.length:benchmark(k);}
 // năng suất 1 người làm CẢ DÂY CHUYỀN một mình (đơn/h) = nghịch đảo tổng thời gian/đơn
 function soloRate(rates){let t=0;for(const s of S.stages){const r=rates[s.key]||0;if(r<=0)return 0;t+=1/r;}return t>0?1/t:0;}
-// số người cả ngày cần ~ : N ÷ (năng suất TB dây chuyền × giờ cả ngày)
-function peopleNeeded(o){ if(o<=0)return 0; const avg={};S.stages.forEach(s=>avg[s.key]=Math.max(1,avgStageRate(s.key))); const cap=soloRate(avg)*S.config.caHours*S.config.fullDay; return cap>0?Math.ceil(o/cap):0; }
+// số người cả ngày cần ~ : N ÷ (TỐC ĐỘ TRỌN GÓI TB × giờ cả ngày). Trọn gói = 1 người làm đủ 7 khâu, TB 20 đơn/h
+function peopleNeeded(o){ if(o<=0)return 0; const cap=(S.config.prod||20)*S.config.caHours*S.config.fullDay; return cap>0?Math.ceil(o/cap):0; }
 function dayPeople(ds){
   const reg=S.reg[ds]||{}, arr=[];
   const rested=(S.restDays&&S.restDays[ds])||[];
@@ -1165,15 +1167,16 @@ function selectDay(N, crabD, pool, acc, trainMap){
   const caH=S.config.caHours, half=N/2;
   const fair=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (soloRate(b.skills)-soloRate(a.skills));
   const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
-  const avgSk={}; S.stages.forEach(s=>avgSk[s.key]=Math.max(1,avgStageRate(s.key)));
-  const onePersonCa=Math.max(1,soloRate(avgSk)*caH);
+  const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TỐC ĐỘ TRỌN GÓI đơn/h (làm đủ 7 khâu)
+  const onePersonCa=Math.max(1,(S.config.prod||20)*caH); // 1 người 1 ca làm được ~ 20×giờ đơn
   const selected=[], inSel=new Set();
   // kỹ năng có TRỢ LỰC đào tạo: người được bổ sung vào 1 khâu -> tối thiểu = chuẩn × hệ số đào tạo (vừa học vừa phụ việc)
   const trainEff={...trainMap}; // admin tích + engine tự dồn khi ngày thiếu
   const boostSkills=p=>{ const ts=trainEff[p.id]; if(!ts)return p.skills; const sk={...p.skills}; sk[ts]=Math.max(sk[ts]||0, benchmark(ts)*(S.config.trainAssist||0.35)); return sk; };
   const caTeam=ca=>selected.filter(p=>p.caList.includes(ca)).map(p=>({...p,hours:caH,skills:boostSkills(p)}));
   const thr={'Sáng':0,'Chiều':0,'Tối':0};
-  const recompute=ca=>{thr[ca]=teamThroughput(caTeam(ca));};
+  // NĂNG LỰC CHÍNH = tổng tốc độ trọn gói × giờ (mỗi người làm trọn đơn ~20/h). Tốc độ từng khâu chỉ để tối ưu vị trí.
+  const recompute=ca=>{thr[ca]=selected.filter(p=>p.caList.includes(ca)).reduce((a,p)=>a+pr(p)*caH,0);};
   ['Sáng','Chiều','Tối'].forEach(recompute);
   const dayCap=()=>thr['Sáng']+thr['Chiều']+thr['Tối'];
   // khâu CHƯA phủ trong 1 ca (pool có người làm được nhưng selected chưa có) — BẮT BUỘC phải lấp
@@ -1182,29 +1185,28 @@ function selectDay(N, crabD, pool, acc, trainMap){
     const selCan=selected.some(p=>p.caList.includes(ca)&&(p.skills[s.key]||0)>0);
     return poolCan&&!selCan;
   }).map(s=>s.key);
+  // (1) NĂNG LỰC: thêm ÍT người nhất cho đủ chỉ tiêu trọn gói; ca nào hụt hơn thì thêm vào ca đó.
+  //     Khi chọn người: ưu tiên ít ngày công + full-day; tốc độ TỪNG KHÂU dùng để chọn người giỏi nút thắt -> team tối ưu.
   let guard=0;
   while(guard++<400){
+    if(dayCap()>=N-1e-6)break;
     const cand=pool.filter(p=>!inSel.has(p.id)); if(!cand.length)break;
-    const uS=uncoveredIn('Sáng'), uC=uncoveredIn('Chiều');
-    // (1) BẮT BUỘC lấp khâu còn trống: chọn người phủ nhiều khâu trống nhất (full-day & ít ngày công ưu tiên)
-    if(uS.length||uC.length){
-      let pick=null,best=-1;
-      cand.forEach(p=>{ let c=0; if(p.caList.includes('Sáng'))c+=uS.filter(k=>(p.skills[k]||0)>0).length; if(p.caList.includes('Chiều'))c+=uC.filter(k=>(p.skills[k]||0)>0).length;
-        if(c>0){const sc=c*1000+(isFull(p)?100:0)-(acc[p.id]||0); if(sc>best){best=sc;pick=p;}} });
-      if(pick){ selected.push(pick); inSel.add(pick.id); pick.caList.forEach(recompute); continue; }
-      // khâu trống mà KHÔNG ai trong pool làm được -> bỏ qua (sẽ báo skill gap), thoát vòng nếu chỉ còn vậy
-    }
-    // (2) đã man đủ khâu. Nếu tổng ngày chưa đủ -> THÊM người làm TĂNG năng lực (giỏi nút thắt ca yếu); chỉ thêm nếu thực sự tăng
-    if(dayCap()<N-1e-6){
-      const needCa=thr['Sáng']<=thr['Chiều']?'Sáng':'Chiều';
-      const t=caTeam(needCa); const bn=t.length?coverageOf(Math.max(1,half),t).bottleneck.key:S.stages[0].key;
-      const cc=cand.filter(p=>p.caList.includes(needCa)).sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||fair(a,b));
-      const c0=dayCap(); let added=null;
-      for(const p of cc){ selected.push(p); p.caList.forEach(recompute); if(dayCap()>c0+0.5){added=p;inSel.add(p.id);break;} else {selected.pop(); p.caList.forEach(recompute);} }
-      if(added)continue;
-      // không ai tăng được năng lực nữa -> dừng (thiếu năng lực thật, do nút thắt kỹ năng)
-    }
-    break; // đủ khâu + đủ/không thể tăng năng lực
+    const needCa = thr['Sáng']<=thr['Chiều'] ? 'Sáng':'Chiều';
+    const mm=caTeam(needCa); const bn=mm.length?coverageOf(Math.max(1,half),mm).bottleneck.key:S.stages[0].key;
+    const inCa=cand.filter(p=>p.caList.includes(needCa));
+    const list=(inCa.length?inCa:cand).slice().sort((a,b)=>
+      ((isFull(b)?1:0)-(isFull(a)?1:0)) || fair(a,b) || ((b.skills[bn]||0)-(a.skills[bn]||0)) );
+    const p=list[0]; selected.push(p); inSel.add(p.id); p.caList.forEach(recompute);
+  }
+  // (2) ĐẢM BẢO MỌI KHÂU CÓ NGƯỜI LÀM ĐƯỢC (skill): nếu pool phủ được mà selected chưa -> thêm tối thiểu người đa kỹ năng
+  let gcov=0;
+  while(gcov++<60){
+    const uS=uncoveredIn('Sáng'), uC=uncoveredIn('Chiều'); if(!uS.length&&!uC.length)break;
+    const cand=pool.filter(p=>!inSel.has(p.id)); if(!cand.length)break;
+    let pick=null,best=-1;
+    cand.forEach(p=>{ let c=0; if(p.caList.includes('Sáng'))c+=uS.filter(k=>(p.skills[k]||0)>0).length; if(p.caList.includes('Chiều'))c+=uC.filter(k=>(p.skills[k]||0)>0).length;
+      if(c>0){const sc=c*1000+(isFull(p)?100:0)-(acc[p.id]||0); if(sc>best){best=sc;pick=p;}} });
+    if(!pick)break; selected.push(pick); inSel.add(pick.id); pick.caList.forEach(recompute);
   }
   // admin tích thêm người vào khâu nút thắt (nếu có) -> đưa vào team
   Object.keys(trainMap).forEach(sid=>{ const p=pool.find(x=>x.id===sid); if(p&&!inSel.has(sid)){selected.push(p);inSel.add(sid);p.caList.forEach(recompute);} });
