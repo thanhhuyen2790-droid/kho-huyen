@@ -167,8 +167,8 @@
   <!-- TAB: NHÂN SỰ -->
   <section class="tab" id="tab-staff">
     <div class="card">
-      <h2>👥 Nhân sự — Năng suất &amp; kỹ năng theo khâu</h2>
-      <p class="sub"><b>Năng suất (đơn/h)</b> là gốc — mặc định 20, chỉnh cho người nhanh/chậm. <b>Điểm 1–10</b> mỗi khâu là phụ để ghép team (0 = không làm được). Người <b>năng suất &amp; kỹ năng cao tự xếp lên đầu</b>. Tích "Làm" để tạm cho nghỉ dài hạn.</p>
+      <h2>👥 Nhân sự — Tốc độ làm việc theo khâu (đơn/h)</h2>
+      <p class="sub">Mỗi ô = <b>số đơn/giờ</b> người đó làm được ở khâu đó (0 = không làm được). Số nhỏ dưới tên khâu là <b>chuẩn tham chiếu</b> (người làm tốt) — ô càng xanh = càng gần/vượt chuẩn, đỏ = chậm. Người mới mặc định = chuẩn, bạn đo thực tế rồi chỉnh. Người <b>tổng tốc độ cao tự xếp lên đầu</b>.</p>
       <div class="toolbar">
         <input id="ns-name" placeholder="Tên nhân sự mới" style="max-width:220px">
         <select id="ns-type" style="max-width:150px"><option value="FT">Full-time</option><option value="PT">Part-time</option></select>
@@ -365,16 +365,18 @@ const DEF_SHOPEE=[299.9,293.7,221.9,202.7,287.8,340.9,517.8,1124.7,459.9,215.3,1
 const DEF_TIKTOK=[116.6,114.2,86.3,78.8,111.9,132.6,201.4,437.4,178.9,83.7,63.0,114.6];
 const DEF_LAZADA=Array(12).fill(10);
 // 7 khâu trong quy trình + tốc độ (đơn/giờ của người 10/10 điểm). Hiệu chỉnh được ở Cài đặt.
+// rate = CHUẨN THAM CHIẾU đơn/h (người làm tốt, chuyên 1 khâu) — từ benchmark fulfillment quốc tế, hiệu chỉnh cho kho sách
 const DEF_STAGES=[
-  {key:'xacnhan',name:'Xác nhận đơn',rate:400},
-  {key:'nhat',name:'Nhặt đơn',rate:80},
-  {key:'kiem',name:'Kiểm đơn',rate:200},
-  {key:'bocxoc',name:'Vào bọc xóc',rate:160},
-  {key:'goihop',name:'Gói hộp',rate:100},
-  {key:'bitdau',name:'Bịt đầu',rate:300},
-  {key:'tit',name:'Tít đơn',rate:400},
+  {key:'xacnhan',name:'Xác nhận đơn',rate:250},
+  {key:'nhat',name:'Nhặt đơn',rate:70},
+  {key:'kiem',name:'Kiểm đơn',rate:120},
+  {key:'bocxoc',name:'Vào bọc xóc',rate:90},
+  {key:'goihop',name:'Gói hộp',rate:40},
+  {key:'bitdau',name:'Bịt đầu',rate:100},
+  {key:'tit',name:'Tít đơn',rate:250},
 ];
-function defaultSkills(){const o={};DEF_STAGES.forEach(s=>o[s.key]=5);return o;}
+// kỹ năng = TỐC ĐỘ đơn/h của người đó ở từng khâu; mặc định = chuẩn tham chiếu
+function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>o[s.key]=s.rate);return o;}
 
 function defaultState(){
   return {
@@ -395,7 +397,8 @@ function defaultState(){
     },
     reg:{}, // { 'YYYY-MM-DD': { staffId: ['Sáng',...] } } — chỉ chứa lịch ĐÃ DUYỆT
     pending:[], // yêu cầu nhân sự gửi chờ duyệt
-    restDays:{} // { 'YYYY-MM-DD': [staffId,...] } — đăng ký nhưng ĐƯỢC CHO NGHỈ (đã xác nhận, ghi vào chấm công)
+    restDays:{}, // { 'YYYY-MM-DD': [staffId,...] } — đăng ký nhưng ĐƯỢC CHO NGHỈ (đã xác nhận, ghi vào chấm công)
+    _skillUnit:'donh'
   };
 }
 let S=load();
@@ -410,11 +413,18 @@ function migrate(o){
   if(!o.stages||!o.stages.length)o.stages=DEF_STAGES.map(s=>({...s}));
   // bổ sung khâu mới nếu thiếu
   DEF_STAGES.forEach(d=>{ if(!o.stages.find(s=>s.key===d.key))o.stages.push({...d}); });
+  // CHUYỂN ĐỔI: điểm 1-10 (cũ) -> tốc độ đơn/h = (điểm/10) × chuẩn khâu. Đánh dấu để không đổi 2 lần.
+  const bm={}; o.stages.forEach(s=>bm[s.key]=s.rate);
   (o.staff||[]).forEach(s=>{
-    if(!(s.prod>0))s.prod=20;
     if(!s.skills)s.skills={};
-    o.stages.forEach(st=>{ if(s.skills[st.key]==null)s.skills[st.key]=5; });
+    if(o._skillUnit!=='donh'){ // dữ liệu cũ dạng điểm 0-10
+      o.stages.forEach(st=>{ const v=s.skills[st.key]; s.skills[st.key]= (v==null)? bm[st.key] : Math.round((Math.min(10,Math.max(0,v))/10)*bm[st.key]); });
+    } else {
+      o.stages.forEach(st=>{ if(s.skills[st.key]==null)s.skills[st.key]=bm[st.key]; });
+    }
+    delete s.prod;
   });
+  o._skillUnit='donh';
   return o;
 }
 function load(){try{const r=localStorage.getItem(KEY);if(r){return migrate(JSON.parse(r))}}catch(e){}return defaultState()}
@@ -661,28 +671,26 @@ function addStaff(){
 }
 function delStaff(i){if(confirm('Xoá nhân sự "'+(S.staff[i]&&S.staff[i].name)+'"?')){S.staff.splice(i,1);saveAll();renderSkillMatrix();renderRegTable()}}
 function renderStaff(){ /* gộp vào renderSkillMatrix */ }
-function skillCellBg(v){v=+v||0;
-  if(v<=0)return '#fbe3e1'; if(v<=3)return '#fde3c8'; if(v<=5)return '#fdf3d0'; if(v<=7)return '#e7f3da'; return '#d3efde';}
-function setSkill(i,key,val){ S.staff[i].skills[key]=Math.max(0,Math.min(10,+val||0)); saveAll(); renderSkillMatrix(); }
-function setProd(i,val){ S.staff[i].prod=Math.max(1,+val||20); saveAll(); renderSkillMatrix(); }
-function staffScore(p){ const m=S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0)/Math.max(1,S.stages.length); return m + (p.prod||20)/10; }
+function skillCellBg(v,bm){v=+v||0;const r=bm>0?v/bm:0;
+  if(v<=0)return '#fbe3e1'; if(r<0.4)return '#fde3c8'; if(r<0.7)return '#fdf3d0'; if(r<1)return '#e7f3da'; return '#d3efde';}
+function setSkill(i,key,val){ S.staff[i].skills[key]=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
+function staffScore(p){ return soloRate(p.skills); } // năng suất dây chuyền (đơn/h) — cao thì xếp lên đầu
 function setStageRate(i,v){ S.stages[i].rate=Math.max(1,+v||1); saveAll(); }
 function renderStageRates(){
   const b=document.getElementById('stageRates'); if(!b)return;
-  b.innerHTML=`<table><thead><tr><th>Khâu</th><th>Tốc độ (đơn/giờ ở mức 10/10)</th></tr></thead><tbody>`+
+  b.innerHTML=`<table><thead><tr><th>Khâu</th><th>Chuẩn tham chiếu (đơn/h, người làm tốt)</th></tr></thead><tbody>`+
     S.stages.map((s,i)=>`<tr><td>${esc(s.name)}</td><td><input type="number" min="1" value="${s.rate}" style="max-width:150px" onchange="setStageRate(${i},this.value)"></td></tr>`).join('')+
     `</tbody></table>`;
 }
 function renderSkillMatrix(){
   const t=document.getElementById('skillTable'); if(!t)return;
-  // sắp xếp: người ĐANG LÀM trước, rồi điểm (kỹ năng TB + năng suất) cao lên đầu
+  // sắp xếp: người ĐANG LÀM trước, rồi năng suất dây chuyền (đơn/h) cao lên đầu
   const order=S.staff.map((p,i)=>i).sort((a,b)=>{const A=S.staff[a],B=S.staff[b];return ((B.active?1:0)-(A.active?1:0)) || (staffScore(B)-staffScore(A));});
-  const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th>Loại</th><th title="Năng suất đơn/giờ">Năng suất<br><span class="pill">đơn/h</span></th>${S.stages.map(s=>`<th title="${esc(s.name)}">${esc(s.name)}</th>`).join('')}<th>Làm</th><th></th></tr></thead>`;
+  const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th>Loại</th>${S.stages.map(s=>`<th title="Chuẩn ${s.rate} đơn/h">${esc(s.name)}<br><span class="pill">${s.rate}</span></th>`).join('')}<th>Làm</th><th></th></tr></thead>`;
   const body=order.map(i=>{const p=S.staff[i];return `<tr ${p.active?'':'style="opacity:.5"'}>
     <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
-    <td style="text-align:center;padding:3px"><input type="number" min="1" value="${p.prod||20}" style="width:56px;text-align:center;border:1px solid var(--brand);font-weight:600" onchange="setProd(${i},this.value)"></td>
-    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" max="10" value="${v}" style="width:46px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
+    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h (chuẩn ${s.rate})" style="width:52px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
     <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
     <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
@@ -724,40 +732,34 @@ function renderDemand(){
       <div class="box"><div class="l">🦀 Crabthing/ngày</div><div class="n">${Math.round(S.demand.crabSku||0)} SKU</div><div class="l">≈ ${crabPpl} người riêng</div></div>
     </div>`;
 }
-// ===== MÔ HÌNH: năng suất (đơn/h) là gốc throughput; kỹ năng chỉ để ghép team đủ khâu =====
-function prodOf(p){ return p.prod>0?p.prod:20; }
-function avgProd(){ const a=S.staff.filter(s=>s.active); return a.length? a.reduce((x,s)=>x+prodOf(s),0)/a.length : 20; }
-// trọng số công sức mỗi khâu (Σ=1): khâu chậm (tốc độ thấp) chiếm nhiều công hơn
-function stageWeights(){
-  const inv=S.stages.map(s=>1/Math.max(1,s.rate)); const sum=inv.reduce((a,b)=>a+b,0)||1;
-  const w={}; S.stages.forEach((s,i)=>w[s.key]=inv[i]/sum); return w;
-}
-function personAvgSkill(p){ const v=S.stages.map(s=>p.skills[s.key]||0).filter(x=>x>0); return v.length? v.reduce((a,b)=>a+b,0)/v.length : 1; }
-// số người (cả ngày) cần ~ : dựa trên năng suất, không phụ thuộc kỹ năng
-function peopleNeeded(o){ if(o<=0)return 0; return Math.ceil(o/(avgProd()*S.config.caHours*S.config.fullDay)); }
+// ===== MÔ HÌNH ĐƠN/H: mỗi người có TỐC ĐỘ đơn/h ở từng khâu (= skills[key]). Throughput = dây chuyền (nút thắt) =====
+function benchmark(k){const s=S.stages.find(x=>x.key===k);return s?s.rate:1;}
+function avgStageRate(k){const a=S.staff.filter(s=>s.active);return a.length?a.reduce((x,s)=>x+(s.skills[k]||0),0)/a.length:benchmark(k);}
+// năng suất 1 người làm CẢ DÂY CHUYỀN một mình (đơn/h) = nghịch đảo tổng thời gian/đơn
+function soloRate(rates){let t=0;for(const s of S.stages){const r=rates[s.key]||0;if(r<=0)return 0;t+=1/r;}return t>0?1/t:0;}
+// số người cả ngày cần ~ : N ÷ (năng suất TB dây chuyền × giờ cả ngày)
+function peopleNeeded(o){ if(o<=0)return 0; const avg={};S.stages.forEach(s=>avg[s.key]=Math.max(1,avgStageRate(s.key))); const cap=soloRate(avg)*S.config.caHours*S.config.fullDay; return cap>0?Math.ceil(o/cap):0; }
 function dayPeople(ds){
   const reg=S.reg[ds]||{}, arr=[];
-  const rested=(S.restDays&&S.restDays[ds])||[]; // người đã được XÁC NHẬN cho nghỉ hôm đó
+  const rested=(S.restDays&&S.restDays[ds])||[];
   for(const sid in reg){ const st=S.staff.find(x=>x.id===sid); if(!st||!st.active)continue;
     if(rested.includes(sid))continue;
-    arr.push({id:sid,name:st.name,type:st.type,cas:reg[sid].length,caList:reg[sid].slice(),hours:reg[sid].length*S.config.caHours,prod:prodOf(st),skills:st.skills}); }
+    arr.push({id:sid,name:st.name,type:st.type,cas:reg[sid].length,caList:reg[sid].slice(),hours:reg[sid].length*S.config.caHours,skills:st.skills}); }
   return arr;
 }
-function capacityOf(team){ return team.reduce((a,p)=>a+p.prod*p.hours,0); }
-// độ phủ từng khâu của 1 team với N đơn (maximin). Throughput gốc = năng suất; kỹ năng phân phối lại.
-function coverageOf(N, team, w){
+// độ phủ từng khâu khi team (mỗi người có .hours) chạy N đơn (maximin theo tốc độ đơn/h)
+function coverageOf(N, team){
   const stages=S.stages;
   const proc={},rem={},assign={}; stages.forEach(s=>proc[s.key]=0); team.forEach(p=>{rem[p.id]=p.hours;assign[p.id]={};});
-  if(N<=0||!team.length){const cov={},ss={},cc={};stages.forEach(s=>{cov[s.key]=N<=0?1:0;ss[s.key]=0;cc[s.key]=team.filter(p=>(p.skills[s.key]||0)>0).length;});return{coverage:cov,fully:N<=0,leftover:team.reduce((a,p)=>a+p.hours,0),bottleneck:stages[0],skillGap:stages.filter(s=>!team.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key),assign,stageSkill:ss,capableCount:cc};}
-  const rate=(p,s)=>(p.prod/Math.max(1e-6,w[s.key]))*((p.skills[s.key]||0)/personAvgSkill(p));
+  if(N<=0||!team.length){const cov={},sr={},cc={};stages.forEach(s=>{cov[s.key]=N<=0?1:0;sr[s.key]=0;cc[s.key]=team.filter(p=>(p.skills[s.key]||0)>0).length;});return{coverage:cov,fully:N<=0,leftover:team.reduce((a,p)=>a+p.hours,0),bottleneck:stages[0],skillGap:stages.filter(s=>!team.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key),assign,stageRate:sr,capableCount:cc};}
   const capable={}; stages.forEach(s=>capable[s.key]=team.some(p=>(p.skills[s.key]||0)>0));
-  let g=0;
-  while(g++<400000){
+  const SL=Math.max(0.02,N/2000); let g=0;
+  while(g++<300000){
     let tg=null,low=2; for(const s of stages){ if(!capable[s.key])continue; const c=proc[s.key]/N; if(c>=0.999)continue; if(c<low){low=c;tg=s;} }
     if(!tg)break;
-    let best=null,br=0; for(const p of team){ if(rem[p.id]<=1e-9)continue; const r=rate(p,tg); if(r>br){br=r;best=p;} }
+    let best=null,br=0; for(const p of team){ if(rem[p.id]<=1e-9)continue; const r=p.skills[tg.key]||0; if(r>br){br=r;best=p;} }
     if(!best||br<=0)break;
-    const room=(N-proc[tg.key])/br, t=Math.min(0.1,rem[best.id],room); if(t<1e-9)break;
+    const room=(N-proc[tg.key])/br, t=Math.min(SL,rem[best.id],room); if(t<1e-9)break;
     proc[tg.key]+=t*br; rem[best.id]-=t; assign[best.id][tg.key]=(assign[best.id][tg.key]||0)+t;
   }
   const cov={}; stages.forEach(s=>cov[s.key]=Math.min(1,proc[s.key]/N));
@@ -765,42 +767,18 @@ function coverageOf(N, team, w){
   const bottleneck=stages.reduce((m,s)=>cov[s.key]<cov[m.key]?s:m,stages[0]);
   const skillGap=stages.filter(s=>!capable[s.key]).map(s=>s.key);
   const fully=stages.every(s=>cov[s.key]>=0.999);
-  // điểm kỹ năng team ở mỗi khâu (TB có trọng số theo giờ người làm khâu đó) + số người làm được
-  const stageSkill={}, capableCount={};
-  stages.forEach(s=>{
-    let hw=0,h=0,cnt=0;
-    team.forEach(p=>{ if((p.skills[s.key]||0)>0)cnt++; const hh=(assign[p.id]&&assign[p.id][s.key])||0; if(hh>0){hw+=hh*(p.skills[s.key]||0);h+=hh;} });
-    stageSkill[s.key]= h>0? hw/h : (cnt?0:0);
-    capableCount[s.key]=cnt;
-  });
-  return {coverage:cov,leftover,bottleneck,skillGap,fully,assign,stageSkill,capableCount};
+  // tốc độ đơn/h team đạt được mỗi khâu (TB có trọng số giờ) + số người làm được
+  const stageRate={}, capableCount={};
+  stages.forEach(s=>{ let hw=0,h=0,cnt=0; team.forEach(p=>{ if((p.skills[s.key]||0)>0)cnt++; const hh=(assign[p.id]&&assign[p.id][s.key])||0; if(hh>0){hw+=hh*(p.skills[s.key]||0);h+=hh;} }); stageRate[s.key]=h>0?hw/h:0; capableCount[s.key]=cnt; });
+  return {coverage:cov,leftover,bottleneck,skillGap,fully,assign,stageRate,capableCount};
 }
-// CHỌN TEAM trong ngày từ pool đăng ký: đủ tải + đủ kỹ năng, ưu tiên người ÍT ngày công (công bằng), không lạm dụng người năng suất cao
-function selectTeam(N, pool, acc, w){
-  if(N<=0) return {selected:[],rest:pool.slice(),cov:coverageOf(0,[],w),capacity:0,status:'closed'};
-  // thứ tự công bằng: ít ca tích luỹ trước; ưu tiên PT để cân ngày công PT; rồi năng suất thấp trước (đỡ lạm dụng người giỏi)
-  const order=p=>[acc[p.id]||0, p.type==='PT'?0:1, p.prod];
-  const rest=pool.slice().sort((a,b)=>{const A=order(a),B=order(b);return A[0]-B[0]||A[1]-B[1]||A[2]-B[2];});
-  const selected=[];
-  const need=()=>{ const cov=coverageOf(N,selected,w); return capacityOf(selected)<N-1e-6 || !cov.fully; };
-  while(rest.length && need()){
-    // nếu đang có khâu hổng kỹ năng, ưu tiên thêm người giỏi khâu đó
-    const cov=coverageOf(N,selected,w);
-    let pick=null;
-    if(selected.length){
-      const weak=cov.skillGap[0] || (cov.fully?null:cov.bottleneck.key);
-      if(weak){ let bi=-1,bs=-1; rest.forEach((p,i)=>{const sk=p.skills[weak]||0; if(sk>bs){bs=sk;bi=i;}}); if(bs>0)pick=bi; }
-    }
-    if(pick===null)pick=0; // người công bằng nhất
-    selected.push(rest.splice(pick,1)[0]);
-  }
-  const cov=coverageOf(N,selected,w), cap=capacityOf(selected);
-  let status;
-  if(cap<N-1e-6) status='short_people';      // hết người mà vẫn thiếu tải
-  else if(!cov.fully) status='short_skill';   // đủ tải nhưng thiếu/lệch kỹ năng
-  else if(capacityOf(rest)>=avgProd()*S.config.caHours*S.config.fullDay*0.9) status='surplus'; // còn dư cả 1 người trở lên
-  else status='ok';
-  return {selected,rest,cov,capacity:cap,status};
+// năng lực tối đa (đơn) team có thể hoàn thành — tìm M lớn nhất mà phủ đủ mọi khâu
+function teamThroughput(team){
+  if(!team.length)return 0;
+  let maxR=0; S.stages.forEach(s=>team.forEach(p=>{if((p.skills[s.key]||0)>maxR)maxR=p.skills[s.key];}));
+  let lo=0, hi=team.reduce((a,p)=>a+p.hours,0)*maxR+1;
+  for(let i=0;i<22;i++){const mid=(lo+hi)/2; if(coverageOf(mid,team).fully)lo=mid; else hi=mid;}
+  return lo;
 }
 
 /* ---------- DATE HELPERS ---------- */
@@ -1057,112 +1035,105 @@ function stageName(k){const s=S.stages.find(x=>x.key===k);return s?s.name:k;}
 function weakestStage(cov){
   const under=S.stages.filter(s=>(cov.coverage[s.key]||0)<0.999);
   const pool=under.length?under:S.stages.slice();
-  return pool.reduce((m,s)=>(cov.stageSkill[s.key]||0)<(cov.stageSkill[m.key]||0)?s:m, pool[0]);
+  return pool.reduce((m,s)=>(cov.stageRate[s.key]||0)<(cov.stageRate[m.key]||0)?s:m, pool[0]);
 }
 // ===== PHÂN BỔ THEO CA: full-day ưu tiên vào nền, người theo ca bù ca thiếu, dư mới làm Crabthing =====
 // Mục tiêu: dùng ÍT người nhất mà chạy đủ đơn cả 2 ca + đủ Crabthing, công bằng ngày công
-function selectDay(N, crabD, pool, acc, w){
-  const caH=S.config.caHours, half=N/2; // đơn chia đều ca sáng / ca chiều
-  const fair=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (a.prod-b.prod);
+function selectDay(N, crabD, pool, acc){
+  const caH=S.config.caHours, half=N/2;
+  const fair=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (soloRate(b.skills)-soloRate(a.skills));
   const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
-  const cap={'Sáng':0,'Chiều':0,'Tối':0};
+  const avgSk={}; S.stages.forEach(s=>avgSk[s.key]=Math.max(1,avgStageRate(s.key)));
+  const onePersonCa=Math.max(1,soloRate(avgSk)*caH); // 1 người làm ~ bao nhiêu đơn/ca
   const selected=[], inSel=new Set();
-  const addP=p=>{selected.push(p);inSel.add(p.id);p.caList.forEach(c=>{if(cap[c]!==undefined)cap[c]+=p.prod*caH;});};
+  const addP=p=>{selected.push(p);inSel.add(p.id);};
   const caMembers=ca=>selected.filter(p=>p.caList.includes(ca)).map(p=>({...p,hours:caH}));
-  // các khâu team đang hổng (không ai) hoặc quá yếu (<4 điểm)
-  const weakKeysOf=cov=>{const ks=[...cov.skillGap];S.stages.forEach(s=>{const v=cov.stageSkill[s.key]||0;if(v>0&&v<4&&!ks.includes(s.key))ks.push(s.key);});return ks;};
-  // chọn người kế tiếp: nếu team đang hổng/yếu kỹ năng -> ưu tiên người lấp được khâu đó; không thì theo công bằng
-  const pickFrom=(cands, team, needN, extraKeys)=>{
+  const caFeasible=(ca,target)=>{ if(target<=0)return true; const m=caMembers(ca); return m.length? coverageOf(target,m).fully : false; };
+  const weakKeysOf=cov=>{const ks=[...cov.skillGap];S.stages.forEach(s=>{if((cov.coverage[s.key]||0)<0.999&&!ks.includes(s.key))ks.push(s.key);});return ks;};
+  const pickFrom=(cands, members, target, extraKeys)=>{
     if(!cands.length)return -1;
-    if(team.length){
-      const cov=coverageOf(Math.max(1,needN), team, w);
+    if(members.length){
+      const cov=coverageOf(Math.max(1,target), members);
       const gaps=[...weakKeysOf(cov), ...(extraKeys||[])];
       if(gaps.length){const k=gaps[0];let bi=-1,bs=0;cands.forEach((p,i)=>{const sk=p.skills[k]||0;if(sk>bs){bs=sk;bi=i;}});if(bs>0)return bi;}
     }
     return 0;
   };
-  // 1a. người FULL ngày vào trước (nền hiệu suất 2 ca) — chọn người lấp kỹ năng còn hổng trước
-  {
-    const cands=pool.filter(isFull).sort(fair);
-    while(cands.length && (cap['Sáng']<half-1e-6||cap['Chiều']<half-1e-6)){
-      const i=pickFrom(cands, selected.slice(), N);
-      addP(cands.splice(Math.max(0,i),1)[0]);
-    }
-  }
-  // 1b. bù từng ca bằng người theo ca — ca CHIỀU ưu tiên bù luôn các khâu ca SÁNG bị yếu (do fix người đăng ký)
+  // 1a. full-day vào trước đến khi CẢ 2 CA phủ đủ N/2 (ưu tiên người lấp khâu còn hổng/yếu)
+  { const cands=pool.filter(isFull).sort(fair);
+    while(cands.length && (!caFeasible('Sáng',half)||!caFeasible('Chiều',half))){
+      const i=pickFrom(cands, selected.map(p=>({...p,hours:caH})), N); addP(cands.splice(Math.max(0,i),1)[0]); } }
+  // 1b. bù từng ca bằng người theo ca — ca CHIỀU ưu tiên bù khâu ca SÁNG đang yếu
   let sangWeak=[];
   for(const ca of ['Sáng','Chiều']){
     const cands=pool.filter(p=>!inSel.has(p.id)&&p.caList.includes(ca)&&!isFull(p)).sort(fair);
-    while(cands.length && cap[ca]<half-1e-6){
-      const i=pickFrom(cands, caMembers(ca), half, ca==='Chiều'?sangWeak:[]);
-      addP(cands.splice(Math.max(0,i),1)[0]);
-    }
-    if(ca==='Sáng'&&caMembers('Sáng').length){ sangWeak=weakKeysOf(coverageOf(Math.max(1,half), caMembers('Sáng'), w)); }
+    while(cands.length && !caFeasible(ca,half)){ const i=pickFrom(cands, caMembers(ca), half, ca==='Chiều'?sangWeak:[]); addP(cands.splice(Math.max(0,i),1)[0]); }
+    if(ca==='Sáng'&&caMembers('Sáng').length){ sangWeak=weakKeysOf(coverageOf(Math.max(1,half), caMembers('Sáng'))); }
   }
-  // 1c. nếu TỔNG ngày vẫn thiếu, thêm bất kỳ ai còn lại (kể cả ca tối hỗ trợ)
-  const totalCap=()=>cap['Sáng']+cap['Chiều']+cap['Tối'];
-  pool.filter(p=>!inSel.has(p.id)).sort(fair).forEach(p=>{ if(totalCap()<N-1e-6)addP(p); });
-  // 1d. TRIM — bỏ bớt người không cần thiết khỏi chạy đơn (miễn TỔNG ngày vẫn ≥ N; ca dư sẽ đẩy hiệu suất bù ca thiếu).
-  //     Người được bỏ ra sẽ rảnh để làm Crabthing hoặc nghỉ. Không bỏ người duy nhất biết một khâu.
-  const createsGap=(p)=>S.stages.some(s=>(p.skills[s.key]||0)>0 && !selected.some(q=>q!==p&&(q.skills[s.key]||0)>0));
-  let trimmed=true;
-  while(trimmed){
+  // năng lực mỗi ca (đơn) — cache, cập nhật khi thay đổi
+  const thr={'Sáng':0,'Chiều':0,'Tối':0};
+  const recompute=ca=>{thr[ca]=teamThroughput(caMembers(ca));};
+  ['Sáng','Chiều','Tối'].forEach(recompute);
+  const dayCap=()=>thr['Sáng']+thr['Chiều']+thr['Tối'];
+  // 1c. tổng ngày vẫn thiếu -> thêm bất kỳ ai (kể cả ca tối hỗ trợ)
+  pool.filter(p=>!inSel.has(p.id)).sort(fair).forEach(p=>{ if(dayCap()<N-1e-6){addP(p);p.caList.forEach(recompute);} });
+  // 1d. TRIM — bỏ người dư (tổng ngày vẫn ≥ N sau khi bỏ); bỏ người nhiều ngày công trước. Nếu bỏ làm hổng khâu thì năng lực tụt -> tự khôi phục.
+  let trimmed=true, guard=0;
+  while(trimmed && guard++<50){
     trimmed=false;
-    const cands=selected.slice().sort((a,b)=>((acc[b.id]||0)-(acc[a.id]||0))||(a.prod-b.prod)); // bỏ người nhiều công trước
+    const cands=selected.slice().sort((a,b)=>((acc[b.id]||0)-(acc[a.id]||0))||(soloRate(a.skills)-soloRate(b.skills)));
     for(const p of cands){
-      const pc=p.caList.reduce((a,c)=>a+(cap[c]!==undefined?p.prod*caH:0),0);
-      if(totalCap()-pc>=N-1e-6 && !createsGap(p)){
-        selected.splice(selected.indexOf(p),1); inSel.delete(p.id);
-        p.caList.forEach(c=>{if(cap[c]!==undefined)cap[c]-=p.prod*caH;});
-        trimmed=true; break;
-      }
+      const idx=selected.indexOf(p); selected.splice(idx,1); p.caList.forEach(recompute);
+      if(dayCap()>=N-1e-6){ inSel.delete(p.id); trimmed=true; break; }
+      else { selected.splice(idx,0,p); p.caList.forEach(recompute); }
     }
   }
-  // 2. CRABTHING từ người dư — chỉ tiêu THEO NGÀY (không cứng 15/ca): mỗi người làm được crabRate/2 SKU mỗi ca
+  // 2. CRABTHING từ người dư — theo NGÀY: mỗi người làm crabRate/2 SKU mỗi ca
   const perCa=(S.config.crabRate||30)/2;
   const crabSel=[]; let crabCap=0;
   pool.filter(p=>!inSel.has(p.id)).sort(fair).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSel.add(p.id);crabCap+=p.caList.length*perCa;} });
   const rest=pool.filter(p=>!inSel.has(p.id));
-  // 3. QUOTA linh hoạt: mặc định mỗi ca N/2; ca thiếu tải thì ca kia ĐẨY HIỆU SUẤT gánh bù, miễn tổng ngày đủ
-  const capS=cap['Sáng'], capCT=cap['Chiều']+cap['Tối'];
-  let qS=Math.min(capS,half), qC=Math.min(capCT,half), rem=N-qS-qC;
-  if(rem>1e-6){const aS=Math.min(rem,capS-qS);qS+=aS;rem-=aS;}
-  if(rem>1e-6){const aC=Math.min(rem,capCT-qC);qC+=aC;rem-=aC;}
-  const dayShort=rem>1e-6;
-  // 4. báo cáo từng ca (kèm vị trí phân công + khâu yếu)
+  // 3. QUOTA linh hoạt: mặc định mỗi ca N/2; ca yếu thì ca khoẻ ĐẨY HIỆU SUẤT gánh bù
+  const capS=thr['Sáng'], capCT=thr['Chiều']+thr['Tối'];
+  let qS=Math.min(capS,half), qC=Math.min(capCT,half), remN=N-qS-qC;
+  if(remN>1e-6){const a=Math.min(remN,capS-qS);qS+=a;remN-=a;}
+  if(remN>1e-6){const a=Math.min(remN,capCT-qC);qC+=a;remN-=a;}
+  const dayShort=remN>1e-6;
+  // 4. báo cáo từng ca
   const caStat={};
   ['Sáng','Chiều','Tối'].forEach(ca=>{
     const members=selected.filter(p=>p.caList.includes(ca));
-    const c=members.reduce((a,p)=>a+p.prod*caH,0);
+    const c=thr[ca];
     const need=ca==='Tối'?0:half;
     const quota=ca==='Sáng'?qS:(ca==='Chiều'?qC:0);
     let st;
     if(ca==='Tối')st=members.length?'support':'none';
     else if(dayShort && c<half-1e-6)st='thiếu';
-    else if(quota>half+1)st='bù';                              // ca này gánh thêm cho ca kia
-    else if(c-quota>=avgProd()*caH*0.9)st='thừa';
+    else if(quota>half+1)st='bù';
+    else if(c-quota>=onePersonCa*0.9)st='thừa';
     else st='đủ';
     const crabHere=crabSel.filter(p=>p.caList.includes(ca));
     let weak=[], roles={};
     if(ca!=='Tối'&&members.length&&N>0){
-      const covCa=coverageOf(Math.max(1,quota||half), members.map(p=>({...p,hours:caH})), w);
+      const mm=members.map(p=>({...p,hours:caH}));
+      const covCa=coverageOf(Math.max(1,quota||half), mm);
       weak=weakKeysOf(covCa);
       members.forEach(p=>{const a=covCa.assign[p.id]||{};roles[p.id]=Object.entries(a).filter(([,h])=>h>0.2).sort((x,y)=>y[1]-x[1]).slice(0,2).map(([k])=>k);});
     }
     caStat[ca]={members,cap:c,need,quota,st,crab:crabHere,weak,roles,
-      morePeople: st==='thiếu'? Math.max(1,Math.ceil((half-c)/(avgProd()*caH))) : 0};
+      morePeople: st==='thiếu'? Math.max(1,Math.ceil((half-c)/onePersonCa)) : 0};
   });
-  return {selected,crabSel,rest,cap,caStat,ordersCap:totalCap(),crabCap,crabD,
+  return {selected,crabSel,rest,caStat,ordersCap:dayCap(),crabCap,crabD,
     crabShort:crabD>0&&crabCap<crabD-1e-6,
     crabMore:Math.max(0,Math.ceil((crabD-crabCap)/(S.config.crabRate||30)))};
 }
 // gộp 1 ngày
-function planDay(d, acc, w){
+function planDay(d, acc){
   const ds=fmt(d), t=dayType(d), orders=ordersOn(d), crabD=crabDemandOn(d);
   const pool=dayPeople(ds);
-  if(t==='closed'){const sd=selectDay(0,0,[],acc,w);return {ds,d,type:t,orders:0,crabD:0,sd,ord:{selected:[],status:'ok',cov:coverageOf(0,[],w),capacity:0},crab:{selected:[],short:false,more:0,demand:0,cap:0},finalRest:pool,kind:'closed',caStat:sd.caStat};}
-  const sd=selectDay(orders, crabD, pool, acc, w);
-  const cov=coverageOf(orders, sd.selected, w); // kỹ năng: chỉ là NHẬN XÉT, không kéo thêm người
+  if(t==='closed'){const sd=selectDay(0,0,[],acc);return {ds,d,type:t,orders:0,crabD:0,sd,ord:{selected:[],status:'ok',cov:coverageOf(0,[]),capacity:0},crab:{selected:[],short:false,more:0,demand:0,cap:0},finalRest:pool,kind:'closed',caStat:sd.caStat};}
+  const sd=selectDay(orders, crabD, pool, acc);
+  const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:p.hours}))); // nhận xét kỹ năng cấp ngày
   const ordShort=sd.ordersCap<orders-1e-6;
   const ordStatus=ordShort?'short_people':(!cov.fully?'short_skill':'ok');
   const leftoverH=sd.rest.reduce((a,p)=>a+p.hours,0);
@@ -1171,22 +1142,20 @@ function planDay(d, acc, w){
   else if(ordShort)kind='short_people';
   else if(sd.crabShort)kind='short_crab';
   else if(!cov.fully)kind='short_skill';
-  else if(leftoverH>=caHoursOf())kind='surplus';
+  else if(leftoverH>=S.config.caHours)kind='surplus';
   else kind='ok';
   return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,
     ord:{selected:sd.selected,status:ordStatus,cov,capacity:sd.ordersCap},
     crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap},
     finalRest:sd.rest,kind};
 }
-function caHoursOf(){return S.config.caHours;}
 // tính 1 tuần (dùng CHUNG cho cả xem Tuần và tổng quan Tháng để 2 nơi luôn khớp nhau)
 function computeWeek(weekStartStr){
   const dates=datesOfWeek(weekStartStr);
   const acc={}; S.staff.forEach(s=>acc[s.id]=0);
-  const w=stageWeights();
   const result=[];
   for(const d of dates){
-    const r=planDay(d, acc, w);
+    const r=planDay(d, acc);
     const used=new Set();
     r.ord.selected.forEach(p=>{used.add(p.id);acc[p.id]+=p.cas;});
     r.crab.selected.forEach(p=>{acc[p.id]+=p.cas;});
@@ -1219,7 +1188,7 @@ function headcountText(r){
     const cs=r.caStat['Sáng'], cc=r.caStat['Chiều'];
     if(cs&&cs.st==='thiếu')parts.push(`ca sáng +${cs.morePeople}`);
     if(cc&&cc.st==='thiếu')parts.push(`ca chiều +${cc.morePeople}`);
-    if(!parts.length){const def=Math.max(0,r.orders-r.ord.capacity);parts.push(`chạy đơn +${Math.max(1,Math.ceil(def/(avgProd()*S.config.caHours*S.config.fullDay)))}`);}
+    if(!parts.length){const def=Math.max(0,r.orders-r.ord.capacity);parts.push(`chạy đơn +${Math.max(1,peopleNeeded(def))}`);}
   }
   if(r.crab.short)parts.push(`Crabthing +${r.crab.more}`);
   if(parts.length)return {cls:'b-bad',text:`Thiếu người (${parts.join(', ')})`};
@@ -1243,7 +1212,7 @@ function ordersComment(r, acc){
       return `🟡 <b>Chạy đơn:</b> đủ ${sel.selected.length} người nhưng CHƯA AI LÀM ĐƯỢC: ${cov.skillGap.map(stageName).join(', ')}. Bổ sung: ${recs.join('; ')}.`;
     }
     const weak=weakestStage(cov);
-    const weakList=[...S.stages].sort((a,b)=>(cov.stageSkill[a.key]||0)-(cov.stageSkill[b.key]||0)).slice(0,2).map(s=>`${s.name} (${(cov.stageSkill[s.key]||0).toFixed(1)})`);
+    const weakList=[...S.stages].sort((a,b)=>(cov.stageRate[a.key]||0)-(cov.stageRate[b.key]||0)).slice(0,2).map(s=>`${s.name} (${Math.round(cov.stageRate[s.key]||0)} đơn/h)`);
     // người đủ skill khâu yếu, trong đó ưu tiên ÍT giờ làm
     const c=notRegistered(ds).filter(s=>(s.skills[weak.key]||0)>=4).sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))||((b.skills[weak.key]||0)-(a.skills[weak.key]||0)))[0];
     return `🟡 <b>Chạy đơn:</b> đủ ${sel.selected.length} người nhưng mới ~${Math.round(cov.coverage[weak.key]*100)}% đơn do lệch kỹ năng. Yếu nhất: <b>${weakList.join(', ')}</b>. ${c?`Nên thêm <b>${c.name}</b> (đủ skill ${weak.name}, đang ít giờ làm).`:'Nên đào tạo các khâu này.'}`;
@@ -1252,7 +1221,7 @@ function ordersComment(r, acc){
   const caLines=[];
   ['Sáng','Chiều'].forEach(ca=>{const cs=r.caStat&&r.caStat[ca];if(cs&&cs.st==='thiếu')caLines.push(`ca ${ca.toLowerCase()} mới làm được ${Math.round(cs.cap)}/${Math.round(cs.need)} đơn (thiếu ≈${cs.morePeople} người)`);});
   const def=Math.max(0,r.orders-sel.capacity);
-  const more=Math.max(1,Math.ceil(def/(avgProd()*S.config.caHours*S.config.fullDay)));
+  const more=Math.max(1,peopleNeeded(def));
   const weak=weakestStage(cov);
   const all=notRegistered(ds);
   const qualified=all.filter(s=>(s.skills[weak.key]||0)>=5).sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))||((b.skills[weak.key]||0)-(a.skills[weak.key]||0)));
@@ -1276,23 +1245,23 @@ function buildDaySug(r, acc){
 /* ---- đánh giá nhanh 1 ngày (cho tổng quan tháng) ---- */
 function evalDay(d){
   if(dayType(d)==='closed')return {d,type:'closed',kind:'closed',orders:0};
-  return planDay(d, {}, stageWeights());
+  return planDay(d, {});
 }
 
 /* ---- thống kê hiệu suất / ngày công cả tháng ---- */
 function planMonth(year,month){
   const acc={}; S.staff.forEach(s=>acc[s.id]={ca:0,days:0,orders:0});
   const accCa={}; S.staff.forEach(s=>accCa[s.id]=0);
-  const w=stageWeights();
   const dim=new Date(year,month,0).getDate();
   for(let dd=1;dd<=dim;dd++){
     const d=new Date(year,month-1,dd), ds=fmt(d);
     if(dayType(d)==='closed')continue;
     const pool=dayPeople(ds); if(!pool.length)continue;
-    const r=planDay(d, accCa, w);
+    const r=planDay(d, accCa);
+    const asg=r.ord.cov&&r.ord.cov.assign||{};
     r.ord.selected.forEach(p=>{
       acc[p.id].ca+=p.cas; acc[p.id].days+=1; accCa[p.id]+=p.cas;
-      acc[p.id].orders+=p.prod*p.hours; // đơn xử lý ~ năng suất × giờ làm
+      const a=asg[p.id]||{}; let o=0; for(const k in a)o+=a[k]*(p.skills[k]||0); acc[p.id].orders+=o; // đơn thực xử lý ở các khâu được phân
     });
     r.crab.selected.forEach(p=>{ acc[p.id].ca+=p.cas; acc[p.id].days+=1; accCa[p.id]+=p.cas; }); // người làm Crabthing cũng tính ngày công
   }
@@ -1364,13 +1333,13 @@ function renderAttendance(){
 function renderSkillRisk(){
   const box=document.getElementById('skillRisk'); if(!box)return;
   const act=S.staff.filter(s=>s.active);
-  box.innerHTML=`<table><thead><tr><th>Khâu</th><th>Tốc độ</th><th>Người làm được</th><th>Người giỏi (≥7)</th><th>Điểm TB</th><th>Rủi ro</th></tr></thead><tbody>`+
+  box.innerHTML=`<table><thead><tr><th>Khâu</th><th>Chuẩn</th><th>Người làm được</th><th>Người giỏi (≥80% chuẩn)</th><th>Tốc độ TB</th><th>Rủi ro</th></tr></thead><tbody>`+
     S.stages.map(s=>{
       const can=act.filter(p=>(p.skills[s.key]||0)>0).length;
-      const good=act.filter(p=>(p.skills[s.key]||0)>=7).length;
+      const good=act.filter(p=>(p.skills[s.key]||0)>=0.8*s.rate).length;
       const avg=act.length?act.reduce((a,p)=>a+(p.skills[s.key]||0),0)/act.length:0;
       const risk=good===0?['b-bad','Nguy hiểm — chưa ai giỏi']:good<2?['b-warn','Mỏng — chỉ 1 người giỏi']:['b-ok','Ổn'];
-      return `<tr><td><b>${esc(s.name)}</b></td><td class="pill">${s.rate} đơn/h</td><td>${can}</td><td>${good}</td><td>${avg.toFixed(1)}</td><td><span class="badge ${risk[0]}">${risk[1]}</span></td></tr>`;
+      return `<tr><td><b>${esc(s.name)}</b></td><td class="pill">${s.rate} đơn/h</td><td>${can}</td><td>${good}</td><td>${Math.round(avg)} đơn/h</td><td><span class="badge ${risk[0]}">${risk[1]}</span></td></tr>`;
     }).join('')+`</tbody></table>`;
 }
 
@@ -1444,8 +1413,10 @@ function renderWeekView(){
         const lbl=ca==='Tối'?'Hỗ trợ':(tops.length?tops.map(stageName).join(' + '):'Linh hoạt');
         const mainK=tops[0];
         const sk=mainK?(p.skills[mainK]||0):Math.max(0,...S.stages.map(s=>p.skills[s.key]||0));
-        const col=sk>=7?'var(--ok)':sk>=4?'var(--warn)':'var(--bad)';
-        return `<li><span>${esc(p.name)} <small class="hint">— ${esc(lbl)}</small></span><span style="display:flex;align-items:center;gap:4px"><span class="sttrack" style="width:44px;flex:none"><span class="stfill" style="width:${sk*10}%;background:${col}"></span></span><b style="font-size:11px">${sk}</b></span></li>`;
+        const bm=mainK?benchmark(mainK):Math.max(...S.stages.map(s=>s.rate));
+        const ratio=bm>0?sk/bm:0;
+        const col=ratio>=1?'var(--ok)':ratio>=0.6?'var(--warn)':'var(--bad)';
+        return `<li><span>${esc(p.name)} <small class="hint">— ${esc(lbl)}</small></span><span style="display:flex;align-items:center;gap:4px" title="${Math.round(sk)} đơn/h${mainK?' (chuẩn '+bm+')':''}"><span class="sttrack" style="width:44px;flex:none"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span><b style="font-size:11px">${Math.round(sk)}</b></span></li>`;
       }).join('');
       const crabRows=cs.crab.map(p=>`<li><span>${esc(p.name)} <small class="hint">— 🦀 Crabthing</small></span><span class="pill">${Math.round((S.config.crabRate||30)/2)} SKU</span></li>`).join('');
       return `<div class="caSec">${header}${perf}<ul class="stafflist">${rows}${crabRows||''}</ul></div>`;
@@ -1455,18 +1426,19 @@ function renderWeekView(){
     const spareChk=r.finalRest.map(p=>`<label class="restchk"><input type="checkbox" onchange="toggleRest('${r.ds}','${p.id}',this.checked)">${esc(p.name)}</label>`).join('');
     const restedChk=restedIds.map(id=>{const s=S.staff.find(x=>x.id===id);return s?`<label class="restchk on"><input type="checkbox" checked onchange="toggleRest('${r.ds}','${id}',this.checked)">${esc(s.name)} ✓nghỉ</label>`:''}).join('');
     const restHtml = (spareChk||restedChk) ? `<div class="metric" style="color:var(--muted)"><b>Cho nghỉ</b> <small class="hint">(tích = xác nhận nghỉ, ghi vào chấm công)</small>: ${spareChk}${restedChk}</div>`:'';
-    // thanh KỸ NĂNG team chạy đơn theo khâu (0–10) + độ phủ
-    const stagesHtml = (r.type!=='closed') ? `<div class="stages"><div class="stlegend">Kỹ năng team chạy đơn theo khâu — điểm/10 · độ phủ</div>${S.stages.map(s=>{
-        const sk=cov.stageSkill[s.key]||0;
+    // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
+    const stagesHtml = (r.type!=='closed') ? `<div class="stages"><div class="stlegend">Tốc độ team theo khâu — đơn/h · độ phủ</div>${S.stages.map(s=>{
+        const rt=cov.stageRate[s.key]||0;
         const c=Math.round((cov.coverage[s.key]||0)*100);
         const cap=cov.capableCount[s.key]||0;
-        const col=sk>=7?'var(--ok)':sk>=4?'var(--warn)':'var(--bad)';
+        const ratio=s.rate>0?rt/s.rate:0;
+        const col=ratio>=1?'var(--ok)':ratio>=0.6?'var(--warn)':'var(--bad)';
         const isBn=weak&&weak.key===s.key;
         const warn=cap===0?' ⛔':(cap===1?' ⚠️':'');
-        return `<div class="stbar" title="${esc(s.name)} — kỹ năng team ${sk.toFixed(1)}/10 · phủ ${c}% · ${cap} người làm được">
+        return `<div class="stbar" title="${esc(s.name)} — team ${Math.round(rt)} đơn/h (chuẩn ${s.rate}) · phủ ${c}% · ${cap} người làm được">
           <span class="stname">${esc(s.name)}${isBn?' 🔴':''}</span>
-          <span class="sttrack"><span class="stfill" style="width:${Math.round(sk*10)}%;background:${col}"></span></span>
-          <span class="stpct">${sk.toFixed(1)}<small style="color:var(--muted);font-weight:400"> ·${c}%${warn}</small></span>
+          <span class="sttrack"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span>
+          <span class="stpct">${Math.round(rt)}<small style="color:var(--muted);font-weight:400"> ·${c}%${warn}</small></span>
         </div>`;
       }).join('')}</div>` : '';
     return `<div class="day ${r.status}">
