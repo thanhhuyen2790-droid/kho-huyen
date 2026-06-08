@@ -80,6 +80,9 @@
   .mclosed{background:#eceef2} .mclosed .mday-s{color:#9aa1b1}
   .modebtn{border:1px solid var(--line);background:#fff;color:var(--muted);padding:8px 14px;border-radius:9px;font-weight:700;cursor:pointer}
   .modebtn.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .caSec{border-top:2px solid var(--line);margin-top:9px;padding-top:7px}
+  .caHead{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
+  .caHead .badge{margin-left:auto}
   .stages{margin:8px 0 4px;border-top:1px dashed var(--line);padding-top:7px}
   .stlegend{font-size:10.5px;color:var(--muted);margin-bottom:5px;font-weight:600}
   .stbar{display:flex;align-items:center;gap:6px;margin:2px 0;font-size:11px}
@@ -1046,9 +1049,14 @@ function selectDay(N, crabD, pool, acc, w){
     else if(c-need>=avgProd()*caH*0.9)st='thừa';
     else st='đủ';
     const crabHere=crabSel.filter(p=>p.caList.includes(ca));
-    let weak=[];
-    if(ca!=='Tối'&&members.length&&N>0){ weak=weakKeysOf(coverageOf(Math.max(1,need), members.map(p=>({...p,hours:caH})), w)); }
-    caStat[ca]={members,cap:c,need,st,crab:crabHere,weak,
+    let weak=[], roles={};
+    if(ca!=='Tối'&&members.length&&N>0){
+      const covCa=coverageOf(Math.max(1,need), members.map(p=>({...p,hours:caH})), w);
+      weak=weakKeysOf(covCa);
+      // vị trí phân công của từng người trong ca = các khâu họ được gán nhiều giờ nhất
+      members.forEach(p=>{const a=covCa.assign[p.id]||{};roles[p.id]=Object.entries(a).filter(([,h])=>h>0.2).sort((x,y)=>y[1]-x[1]).slice(0,2).map(([k])=>k);});
+    }
+    caStat[ca]={members,cap:c,need,st,crab:crabHere,weak,roles,
       morePeople: st==='thiếu'? Math.max(1,Math.ceil((need-c)/(avgProd()*caH))) : 0};
   });
   return {selected,crabSel,rest,cap,caStat,ordersCap:totalCap(),crabCap,crabD,
@@ -1220,16 +1228,17 @@ function renderMonthView(){
     const start=new Date(refMon); start.setDate(start.getDate()+w*7);
     const ws=fmt(start);
     const dys=Array.from({length:7},(_,i)=>{const d=new Date(start);d.setDate(d.getDate()+i);return evalDay(d)});
-    const cThieu=dys.filter(x=>['short_people','short_crab','short_both'].includes(x.kind)).length, cWarn=dys.filter(x=>['surplus','short_skill'].includes(x.kind)).length;
+    const cThieu=dys.filter(x=>['short_people','short_crab','short_both'].includes(x.kind)).length, cThua=dys.filter(x=>x.kind==='surplus').length;
     const tag = w===0?'<span class="badge b-mid">Tuần hiện tại</span>' : w===1?'<span class="badge b-peak">Tuần tới</span>' : '<span class="badge b-normal">Tuần trước</span>';
     html+=`<div class="${w===0?'mweek mweek-now':'mweek'}">
       <div class="mweek-h">
-        <div><b>Tuần ${weekLabel(ws)}</b> ${tag}${cThieu?`<span class="badge b-bad">${cThieu} ngày thiếu người</span>`:''}${cWarn?`<span class="badge b-warn">${cWarn} ngày cần lưu ý</span>`:''}</div>
+        <div><b>Tuần ${weekLabel(ws)}</b> ${tag}${cThieu?`<span class="badge b-bad">${cThieu} ngày thiếu người</span>`:''}${cThua?`<span class="badge b-warn">${cThua} ngày thừa người</span>`:''}</div>
         <button class="btn ghost sm" onclick="openWeek('${ws}')">Xem chi tiết ▶</button>
       </div>
       <div class="mdays">
         ${dys.map((x,i)=>{
-          const rs={ok:['mok','Đủ'],surplus:['mwarn','Thừa'],short_people:['mbad','Thiếu đơn'],short_crab:['mbad','Thiếu Crab'],short_both:['mbad','Thiếu cả 2'],short_skill:['mwarn','Lệch KN'],closed:['mclosed','Nghỉ']}[x.kind]||['mbad','—'];
+          // tổng quan tháng: CHỈ thiếu/đủ/thừa người (lệch kỹ năng coi như Đủ, xem chi tiết ở tuần)
+          const rs={ok:['mok','Đủ'],short_skill:['mok','Đủ'],surplus:['mwarn','Thừa'],short_people:['mbad','Thiếu'],short_crab:['mbad','Thiếu'],short_both:['mbad','Thiếu'],closed:['mclosed','Nghỉ']}[x.kind]||['mbad','—'];
           const cls=rs[0], lbl=rs[1];
           return `<div class="mday ${cls}" onclick="openWeek('${ws}')" title="Bấm để xem chi tiết tuần">
             <div class="mday-d">${DOW[i].replace('Thứ ','T')} ${x.d.getDate()}/${x.d.getMonth()+1}</div>
@@ -1266,10 +1275,28 @@ function renderWeekView(){
     const cov=r.ord.cov;
     const weak=(r.ord.status==='short_skill'||r.ord.status==='short_people')?weakestStage(cov):null;
     const totalReg=r.ord.selected.length+r.crab.selected.length+r.finalRest.length;
-    // người chạy đơn
-    const workers=r.ord.selected.map(p=>{const reg=(S.reg[r.ds]&&S.reg[r.ds][p.id])||[];return `<li><span>${esc(p.name)}</span><span class="pill">${reg.map(c=>CASHORT[c]).join('+')}</span></li>`}).join('')||'<li><span class="pill">Chưa ai chạy đơn</span></li>';
-    // Crabthing
-    const crabHtml = r.crabD>0 ? `<div class="metric" style="margin-top:6px"><b>Crabthing:</b> ${Math.round(r.crabD)} SKU · phân <b style="color:${r.crab.short?'var(--bad)':'var(--ok)'}">${r.crab.selected.length}</b> người${r.crab.selected.length?` (${r.crab.selected.map(p=>esc(p.name)).join(', ')})`:''}${r.crab.short?' — THIẾU':''}</div>`:'';
+    // ===== BỐ CỤC THEO CA: tiêu đề ca + trạng thái, năng suất ca, danh sách người + vị trí + thanh kỹ năng =====
+    const caSection = r.type!=='closed'&&r.caStat ? ['Sáng','Chiều','Tối'].map(ca=>{
+      const cs=r.caStat[ca]; if(!cs)return '';
+      if(ca==='Tối'&&!cs.members.length&&!cs.crab.length)return '';
+      const icon=ca==='Sáng'?'☀️':ca==='Chiều'?'🌤️':'🌙';
+      const b=cs.st==='thiếu'?['b-bad','THIẾU NGƯỜI +'+cs.morePeople]:cs.st==='thừa'?['b-warn','THỪA NGƯỜI']:cs.st==='đủ'?['b-ok','ĐỦ NGƯỜI']:['b-normal','HỖ TRỢ'];
+      const header=`<div class="caHead">${icon} <b>CA ${ca.toUpperCase()}</b> — ${cs.members.length+cs.crab.length} người <span class="badge ${b[0]}">${b[1]}</span></div>`;
+      const perf= ca!=='Tối'
+        ? `<div class="metric">Năng suất ca: làm được <b>${Math.round(cs.cap)}</b>/${Math.round(cs.need)} đơn${cs.weak&&cs.weak.length?` · <span style="color:var(--bad)">KN yếu: ${cs.weak.map(stageName).join(', ')}</span>`:''}</div>`
+        : `<div class="metric">Hỗ trợ thêm ~${Math.round(cs.cap)} đơn</div>`;
+      const rows=cs.members.map(p=>{
+        const tops=(cs.roles&&cs.roles[p.id])||[];
+        const lbl=ca==='Tối'?'Hỗ trợ':(tops.length?tops.map(stageName).join(' + '):'Linh hoạt');
+        const mainK=tops[0];
+        const sk=mainK?(p.skills[mainK]||0):Math.max(0,...S.stages.map(s=>p.skills[s.key]||0));
+        const col=sk>=7?'var(--ok)':sk>=4?'var(--warn)':'var(--bad)';
+        return `<li><span>${esc(p.name)} <small class="hint">— ${esc(lbl)}</small></span><span style="display:flex;align-items:center;gap:4px"><span class="sttrack" style="width:44px;flex:none"><span class="stfill" style="width:${sk*10}%;background:${col}"></span></span><b style="font-size:11px">${sk}</b></span></li>`;
+      }).join('');
+      const crabRows=cs.crab.map(p=>`<li><span>${esc(p.name)} <small class="hint">— 🦀 Crabthing</small></span><span class="pill">${Math.round((S.config.crabRate||30)/2)} SKU</span></li>`).join('');
+      return `<div class="caSec">${header}${perf}<ul class="stafflist">${rows}${crabRows||''}</ul></div>`;
+    }).join('') : '';
+    const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
     const restHtml = r.finalRest.length ? `<div class="metric" style="color:var(--muted)">Có thể nghỉ: ${r.finalRest.map(p=>esc(p.name)).join(', ')}</div>`:'';
     // thanh KỸ NĂNG team chạy đơn theo khâu (0–10) + độ phủ
     const stagesHtml = (r.type!=='closed') ? `<div class="stages"><div class="stlegend">Kỹ năng team chạy đơn theo khâu — điểm/10 · độ phủ</div>${S.stages.map(s=>{
@@ -1289,16 +1316,9 @@ function renderWeekView(){
       <div class="dh"><b>${DOW[i]}</b><span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Cần ≈ <b>${r.reqPeople}</b> · Chạy đơn <b>${r.ord.selected.length}</b> · đăng ký <b>${totalReg}</b></div>
-      ${r.type!=='closed'&&r.caStat?['Sáng','Chiều','Tối'].map(ca=>{
-        const cs=r.caStat[ca]; if(!cs)return '';
-        if(ca==='Tối')return cs.members.length?`<div class="metric">🌙 Ca tối (hỗ trợ): <b>${cs.members.length}</b> người · +${Math.round(cs.cap)} đơn</div>`:'';
-        const b=cs.st==='thiếu'?['b-bad','THIẾU +'+cs.morePeople]:cs.st==='thừa'?['b-warn','THỪA']:['b-ok','ĐỦ'];
-        return `<div class="metric">${ca==='Sáng'?'☀️':'🌤️'} Ca ${ca.toLowerCase()}: <b>${cs.members.length}</b> người · làm được <b>${Math.round(cs.cap)}</b>/${Math.round(cs.need)} đơn <span class="badge ${b[0]}">${b[1]}</span>${cs.crab.length?` <span class="pill">🦀 ${cs.crab.map(p=>esc(p.name)).join(', ')}</span>`:''}${cs.weak&&cs.weak.length?` <span class="pill" style="color:var(--bad)">KN yếu: ${cs.weak.map(stageName).join(', ')}</span>`:''}</div>`;
-      }).join(''):''}
+      ${caSection}
       ${stagesHtml}
-      <div class="metric" style="margin-top:4px;color:var(--muted)">Người chạy đơn:</div>
-      <ul class="stafflist">${workers}</ul>
-      ${crabHtml}
+      ${crabWarn}
       ${restHtml}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
     </div>`;
