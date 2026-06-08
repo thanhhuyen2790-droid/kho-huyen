@@ -108,6 +108,13 @@
   .kpi .box .l{font-size:11.5px;color:var(--muted)}
   .inline{display:flex;gap:6px;align-items:center}
   small.hint{color:var(--muted);font-size:11px}
+  #docCard details{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;padding:2px 12px}
+  #docCard summary{cursor:pointer;padding:9px 0;font-size:14px;list-style-position:inside}
+  #docCard summary::marker{color:var(--brand)}
+  #docCard .docbody{font-size:13px;line-height:1.6;color:var(--ink);padding:2px 0 12px}
+  #docCard .docbody ul,#docCard .docbody ol{margin:6px 0 6px 4px;padding-left:18px}
+  #docCard .docbody li{margin:4px 0}
+  #docCard .docnote{color:var(--muted);font-size:12px}
   /* login + auth */
   .overlay{position:fixed;inset:0;background:linear-gradient(135deg,#1f54cc,#2f6df6);display:flex;align-items:center;justify-content:center;z-index:100}
   .login{background:#fff;border-radius:16px;padding:30px;width:340px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -312,6 +319,92 @@
 
   <!-- TAB: CÀI ĐẶT -->
   <section class="tab" id="tab-config">
+    <div class="card" id="docCard">
+      <h2>📖 Cách phần mềm hoạt động (mô tả &amp; công thức)</h2>
+      <p class="sub">Đọc phần này để hiểu phần mềm tính toán &amp; điều phối nhân sự như thế nào, dựa trên cơ sở gì — kể cả người chưa từng dùng. Bấm từng mục để mở.</p>
+
+      <details open><summary><b>1. Phần mềm này làm gì?</b></summary>
+        <div class="docbody">
+        <p>Mục tiêu: mỗi ngày <b>xếp ÍT nhân sự nhất</b> mà vẫn <b>chạy hết số đơn</b> của ngày đó, đảm bảo đủ kỹ năng cho cả 7 khâu của quy trình, và <b>chia ngày công đều</b> cho mọi người. Khi thiếu hoặc thừa người thì cảnh báo và đề xuất gọi thêm / cho nghỉ.</p>
+        <p>Quy trình 1 đơn đi qua 7 khâu: <b>Xác nhận đơn → Nhặt đơn → Kiểm đơn → Vào bọc xóc → Gói hộp → Bịt đầu → Tít đơn</b>. Ngoài ra có mảng <b>Crabthing</b> (đơn vị SKU) tách riêng.</p>
+        </div>
+      </details>
+
+      <details><summary><b>2. Dữ liệu đầu vào (bạn nhập)</b></summary>
+        <div class="docbody">
+        <ul>
+          <li><b>Nhân sự &amp; tốc độ (tab Nhân sự):</b> mỗi người, mỗi khâu = <b>số đơn/giờ</b> họ làm được (0 = không làm được). Đây là dữ liệu gốc.</li>
+          <li><b>Chuẩn tham chiếu (Cài đặt):</b> tốc độ đơn/h của "người làm tốt" mỗi khâu — dùng làm mặc định khi thêm người &amp; làm thước màu.</li>
+          <li><b>Chỉ tiêu đơn theo tháng (tab Chỉ tiêu đơn):</b> số đơn 1 ngày thường của Shopee, Tiktok. Hệ số ngày 15&amp;25 (×2), ngày trùng 6.6/7.7 (×4), ngày kho đóng cửa.</li>
+          <li><b>Crabthing:</b> số SKU/ngày + năng suất SKU/người/ngày (mặc định 30/30).</li>
+          <li><b>Đăng ký lịch tuần:</b> mỗi nhân sự đăng ký ca Sáng/Chiều/Tối từng ngày (admin duyệt).</li>
+          <li><b>Giờ mỗi ca</b> &amp; <b>số ca = 1 ngày đầy đủ</b> (mặc định 4 giờ/ca, 2 ca = full ngày).</li>
+        </ul>
+        </div>
+      </details>
+
+      <details><summary><b>3. Tính SỐ ĐƠN mỗi ngày</b></summary>
+        <div class="docbody">
+        <p><b>Đơn ngày thường</b> = Shopee + Tiktok (của tháng đó).<br>
+        <b>Ngày 15 &amp; 25</b> = đơn thường × 2. &nbsp; <b>Ngày trùng</b> = đơn thường × 4 (hệ số chỉnh được).</p>
+        <p><b>Chủ nhật kho nghỉ</b> nhưng sàn vẫn sinh đơn → đơn Chủ nhật <b>dồn sang Thứ Hai</b>. (Nếu Chủ nhật rơi vào 15/25 hay ngày trùng thì tính theo hệ số đặc biệt của chính nó rồi mới dồn.) Quy tắc này áp dụng chung cho mọi chuỗi ngày nghỉ.</p>
+        </div>
+      </details>
+
+      <details><summary><b>4. Mô hình NĂNG LỰC (công thức cốt lõi)</b></summary>
+        <div class="docbody">
+        <p>Vì là <b>dây chuyền</b>, mỗi đơn phải qua đủ 7 khâu, nên <b>khâu chậm/yếu nhất là nút thắt</b> quyết định tốc độ ra đơn.</p>
+        <p><b>Năng suất 1 người làm cả dây chuyền</b> (đơn/h) = 1 ÷ (tổng thời gian/đơn) = <b>1 / Σ(1 ÷ tốc_độ_từng_khâu)</b>.<br>
+        <span class="docnote">VD người làm chuẩn: 1/(1/250+1/70+1/120+1/90+1/40+1/100+1/250) ≈ <b>13 đơn/h</b> → 8 giờ ≈ 104 đơn/ngày nếu làm một mình.</span></p>
+        <p><b>Năng lực của một team</b> (đơn tối đa hoàn thành) được tính bằng cách <b>rải giờ công của từng người vào các khâu</b> sao cho mọi khâu đều xử lý đủ số đơn (thuật toán cân bằng "maximin": luôn dồn vào khâu đang phủ thấp nhất, ưu tiên người nhanh nhất khâu đó). Phần mềm tìm <b>M lớn nhất</b> mà team phủ đủ 100% cả 7 khâu — đó là năng lực ngày/ca.</p>
+        <p><b>Số người cần ≈</b> Số đơn ÷ (năng suất dây chuyền TB của đội × số giờ cả ngày).</p>
+        </div>
+      </details>
+
+      <details><summary><b>5. Cách PHÂN BỔ người trong 1 ngày</b></summary>
+        <div class="docbody">
+        <p>Đơn chia đều 2 ca: ca Sáng N/2, ca Chiều N/2. Thứ tự xếp:</p>
+        <ol>
+          <li><b>Người làm full ngày vào trước</b> (làm nền cả 2 ca), thêm đến khi cả 2 ca đủ tải. Khi thêm, ưu tiên người <b>lấp được khâu đang hổng/yếu</b> của team.</li>
+          <li><b>Bù từng ca</b> bằng người làm theo ca. Ca Chiều ưu tiên bù luôn khâu mà ca Sáng đang yếu (do bị "fix" người đăng ký).</li>
+          <li><b>Cắt bớt (trim):</b> bỏ người dư khỏi chạy đơn (miễn tổng ngày vẫn đủ đơn, không làm hổng khâu nào) — ưu tiên bỏ người đang nhiều ngày công. Đây là cách "dùng ít người nhất".</li>
+          <li><b>Đẩy hiệu suất gánh bù:</b> nếu một ca thừa người, ca đó được giao thêm đơn để bù cho ca thiếu — miễn tổng ngày đủ.</li>
+          <li><b>Crabthing:</b> người dư còn lại làm Crabthing (chỉ tiêu theo NGÀY = 30 SKU, mỗi người ~15 SKU/ca). Người làm Crabthing không chạy đơn.</li>
+        </ol>
+        <p><b>Công bằng:</b> mọi bước đều ưu tiên người <b>ít ngày công nhất</b> (đặc biệt part-time) để xoay vòng, tránh người làm nhiều người làm ít.</p>
+        </div>
+      </details>
+
+      <details><summary><b>6. Quyết định ĐỦ / THIẾU / THỪA người &amp; đề xuất</b></summary>
+        <div class="docbody">
+        <ul>
+          <li><b>Đủ người:</b> team đăng ký (sau khi xếp) chạy đủ số đơn + đủ Crabthing.</li>
+          <li><b>Thiếu người:</b> dù dùng hết người vẫn không đủ năng lực → ghi rõ thiếu ở <b>ca nào</b> / mảng nào, cần thêm mấy người.</li>
+          <li><b>Thừa người:</b> sau khi xếp đủ vẫn dư → đề xuất ai có thể nghỉ (ưu tiên người nhiều ngày công).</li>
+          <li><b>Đề xuất gọi thêm (2 lớp):</b> ① lọc người <b>đủ kỹ năng</b> khâu đang thiếu trước; ② trong nhóm đó ưu tiên người <b>ít giờ làm</b> hơn để cân bằng.</li>
+        </ul>
+        </div>
+      </details>
+
+      <details><summary><b>7. Luồng vận hành &amp; cơ sở dữ liệu</b></summary>
+        <div class="docbody">
+        <p>Nhân sự đăng ký lịch tuần (mật khẩu user) → Admin <b>phê duyệt</b> → phần mềm phân bổ → Admin xem &amp; <b>tích cho nghỉ</b> người dư (ghi vào chấm công) → <b>Lịch làm việc chốt</b> hiển thị cho cả team (ẩn kỹ năng) → <b>Chấm công</b> tự tổng hợp.</p>
+        <p><b>Cơ sở số liệu chuẩn tham chiếu:</b> lấy từ benchmark fulfillment quốc tế (nhặt 60–80 đơn/h, đóng gói thủ công 15–20 đơn/h — là nút thắt, các khâu bấm máy/quét mã 200–300 đơn/h), hiệu chỉnh cho kho sách. <b>Đây chỉ là điểm khởi đầu</b> — số liệu chuẩn nhất là bạn tự bấm giờ đo kho và nhập vào.</p>
+        </div>
+      </details>
+
+      <details><summary><b>8. Giới hạn cần lưu ý (để kiểm chứng)</b></summary>
+        <div class="docbody">
+        <ul>
+          <li>Kết quả chỉ chính xác khi <b>tốc độ đơn/h từng người được nhập sát thực tế</b>. Hãy đo &amp; cập nhật định kỳ.</li>
+          <li>Đơn được giả định <b>chia đều 2 ca</b>; nếu thực tế lệch nhiều, có thể cần thêm tuỳ chọn tỷ lệ ca.</li>
+          <li>Thuật toán cân bằng là <b>gần tối ưu (heuristic)</b>, không phải tối ưu tuyệt đối — đủ tốt cho điều phối nhưng có thể chênh nhẹ so với cách xếp tay khéo nhất.</li>
+          <li>Khi 2 người sửa cùng lúc trên cloud, bản lưu sau thắng (hiếm gặp ở quy mô kho).</li>
+        </ul>
+        <p class="docnote">Thấy chỗ nào logic chưa khớp thực tế kho, ghi lại và yêu cầu chỉnh — phần mềm được thiết kế để điều chỉnh dần theo dữ liệu thật.</p>
+        </div>
+      </details>
+    </div>
     <div class="card">
       <h2>Cài đặt &amp; dữ liệu</h2>
       <p class="sub">Thông số chung của kho.</p>
