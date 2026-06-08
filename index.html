@@ -783,7 +783,7 @@ function renderSkillMatrix(){
   const body=order.map(i=>{const p=S.staff[i];return `<tr ${p.active?'':'style="opacity:.5"'}>
     <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
-    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h (chuẩn ${s.rate})" style="width:52px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
+    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
     <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
     <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
