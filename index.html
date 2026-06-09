@@ -179,6 +179,7 @@
     <span class="rolechip" id="connBadge" title="Trạng thái kết nối"></span>
     <span class="rolechip" id="saveStatus" title="Trạng thái lưu dữ liệu"></span>
     <span class="rolechip" id="roleChip"></span>
+    <span class="rolechip" id="buildTag" title="Phiên bản phần mềm đang chạy" style="background:#eef4ff;color:#1d6fe0;font-weight:700"></span>
     <button class="logout" onclick="logout()">Đăng xuất</button>
   </div>
 </header>
@@ -459,6 +460,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
+const BUILD = "v2026.06.09-2 (cân bằng ngày công)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -724,6 +726,7 @@ function startApp(){
   document.getElementById('overlay').style.display='none';
   document.getElementById('hdrRight').style.display='flex';
   document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)';
+  {const bt=document.getElementById('buildTag'); if(bt)bt.textContent=BUILD;}
   setConnBadge();
   setSaveStatus(cloudMode?'saved':'local');
   setupAutoSaveGuards();
