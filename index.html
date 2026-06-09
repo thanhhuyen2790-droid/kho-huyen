@@ -460,7 +460,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.09-3 (năng lực ưu tiên)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.09-5 (viết lại nhất quán A–D)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1167,91 +1167,66 @@ function weakestStage(cov){
   return pool.reduce((m,s)=>(cov.coverage[s.key]||0)<(cov.coverage[m.key]||0)?s:m, pool[0]); // nút thắt thật = độ phủ thấp nhất
 }
 // ===== PHÂN BỔ THEO CA (đúng dây chuyền): mỗi ca MAN ĐỦ 7 khâu, dùng ÍT người nhất; khâu yếu -> năng lực tụt + cảnh báo (KHÔNG loại người) =====
-function selectDay(N, crabD, pool, acc, trainMap){
+function selectDay(N, crabD, pool, acc, trainMap, busy){
   trainMap=trainMap||{};
   const caH=S.config.caHours, half=N/2;
-  const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TỐC ĐỘ TRỌN GÓI đơn/h (làm đủ 7 khâu)
-  const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
-  // CHẠY ĐƠN — Full-time là lực lượng NỀN (ưu tiên tuyệt đối, xếp theo năng lực). Part-time: CÂN BẰNG NGÀY CÔNG toàn tuần là chính,
-  // ai đã làm ÍT ngày hơn được chọn trước (xoay đều, tránh dồn 1-2 ngày rồi nghỉ hẳn) -> người đăng ký ít ngày -> năng lực chỉ là phá hoà.
-  const fair=(a,b)=>{
-    const ta=a.type==='PT'?1:0, tb=b.type==='PT'?1:0;
-    if(ta!==tb)return ta-tb; // FT luôn trước PT
-    if(ta===0)return (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0)); // FT (nền): theo năng lực
-    return (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0)) || (((a.weekDays||99)-(b.weekDays||99))) || ((isFull(b)?1:0)-(isFull(a)?1:0)); // PT: NĂNG LỰC trước (người giỏi lên dây chuyền); người NGANG TÀI mới cân bằng ngày công
-  };
-  // CRABTHING: CÂN BẰNG ngày công trước (ai ÍT công nhất làm crab, người làm nhiều được nghỉ) -> PT trước -> khi HOÀ acc thì người trọn-gói CAO hơn gánh crab (để người yếu khỏi bị dồn crab mỗi ngày)
-  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(b)-pr(a));
-  const onePersonCa=Math.max(1,(S.config.prod||20)*caH); // 1 người 1 ca làm được ~ 20×giờ đơn
-  const selected=[], inSel=new Set();
-  // kỹ năng có TRỢ LỰC đào tạo: người được bổ sung vào 1 khâu -> tối thiểu = chuẩn × hệ số đào tạo (vừa học vừa phụ việc)
-  const trainEff={...trainMap}; // admin tích + engine tự dồn khi ngày thiếu
+  const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TRỌN GÓI đơn/h — lấy trực tiếp từ bảng Nhân sự
+  const CAS=['Sáng','Chiều'];
+  const onePersonCa=Math.max(1,(S.config.prod||20)*caH);
+  const trainEff={...trainMap}; // người được lót vào nút thắt (admin tích + engine dồn)
   const boostSkills=p=>{ const ts=trainEff[p.id]; if(!ts)return p.skills; const sk={...p.skills}; sk[ts]=Math.max(sk[ts]||0, benchmark(ts)*(S.config.trainAssist||0.35)); return sk; };
-  const caTeam=ca=>selected.filter(p=>p.caList.includes(ca)).map(p=>({...p,hours:caH,skills:boostSkills(p)}));
-  const thr={'Sáng':0,'Chiều':0,'Tối':0};
-  // NĂNG LỰC CHÍNH = tổng tốc độ trọn gói × giờ (mỗi người làm trọn đơn ~20/h). Tốc độ từng khâu chỉ để tối ưu vị trí.
-  const recompute=ca=>{thr[ca]=selected.filter(p=>p.caList.includes(ca)).reduce((a,p)=>a+pr(p)*caH,0);};
-  ['Sáng','Chiều','Tối'].forEach(recompute);
-  const dayCap=()=>thr['Sáng']+thr['Chiều']+thr['Tối'];
-  // khâu CHƯA phủ trong 1 ca (pool có người làm được nhưng selected chưa có) — BẮT BUỘC phải lấp
-  const uncoveredIn=ca=>S.stages.filter(s=>{
-    const poolCan=pool.some(p=>p.caList.includes(ca)&&(p.skills[s.key]||0)>0);
-    const selCan=selected.some(p=>p.caList.includes(ca)&&(p.skills[s.key]||0)>0);
-    return poolCan&&!selCan;
-  }).map(s=>s.key);
-  // (1) NĂNG LỰC: thêm ÍT người nhất cho đủ chỉ tiêu trọn gói; ca nào hụt hơn thì thêm vào ca đó.
-  //     Khi chọn người: ưu tiên ít ngày công + full-day; tốc độ TỪNG KHÂU dùng để chọn người giỏi nút thắt -> team tối ưu.
-  let guard=0;
-  while(guard++<400){
-    if(dayCap()>=N-1e-6)break;
-    const cand=pool.filter(p=>!inSel.has(p.id)); if(!cand.length)break;
-    const needCa = thr['Sáng']<=thr['Chiều'] ? 'Sáng':'Chiều';
-    const mm=caTeam(needCa); const bn=mm.length?coverageOf(Math.max(1,half),mm).bottleneck.key:S.stages[0].key;
-    const inCa=cand.filter(p=>p.caList.includes(needCa));
-    const list=(inCa.length?inCa:cand).slice().sort((a,b)=>
-      fair(a,b) || ((b.skills[bn]||0)-(a.skills[bn]||0)) );
-    const p=list[0]; selected.push(p); inSel.add(p.id); p.caList.forEach(recompute);
-  }
-  // (2) ĐẢM BẢO MỌI KHÂU CÓ NGƯỜI LÀM ĐƯỢC (skill): nếu pool phủ được mà selected chưa -> thêm tối thiểu người đa kỹ năng
-  let gcov=0;
-  while(gcov++<60){
-    const uS=uncoveredIn('Sáng'), uC=uncoveredIn('Chiều'); if(!uS.length&&!uC.length)break;
-    const cand=pool.filter(p=>!inSel.has(p.id)); if(!cand.length)break;
-    let pick=null,best=-1;
-    cand.forEach(p=>{ let c=0; if(p.caList.includes('Sáng'))c+=uS.filter(k=>(p.skills[k]||0)>0).length; if(p.caList.includes('Chiều'))c+=uC.filter(k=>(p.skills[k]||0)>0).length;
-      if(c>0){const sc=c*1000+(p.type==='FT'?300:0)+(isFull(p)?100:0)-(acc[p.id]||0); if(sc>best){best=sc;pick=p;}} });
-    if(!pick)break; selected.push(pick); inSel.add(pick.id); pick.caList.forEach(recompute);
-  }
-  // admin tích thêm người vào khâu nút thắt (nếu có) -> đưa vào team
-  Object.keys(trainMap).forEach(sid=>{ const p=pool.find(x=>x.id===sid); if(p&&!inSel.has(sid)){selected.push(p);inSel.add(sid);p.caList.forEach(recompute);} });
-  // TẬN DỤNG HẾT NGƯỜI khi ngày THIẾU: dồn nốt người đăng ký vào khâu nút thắt (trợ lực đào tạo) — không để ai dư trên ngày thiếu
-  let g2=0;
-  while(dayCap()<N-1e-6 && g2++<300){
-    const cand=pool.filter(p=>!inSel.has(p.id)); if(!cand.length)break;
-    const needCa=thr['Sáng']<=thr['Chiều']?'Sáng':'Chiều';
-    const t=caTeam(needCa); const bn=t.length?coverageOf(Math.max(1,half),t).bottleneck.key:S.stages[0].key;
-    const cc=cand.filter(p=>p.caList.includes(needCa)).sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||fair(a,b));
-    const p=cc[0]||cand.slice().sort(fair)[0]; if(!p)break;
-    selected.push(p); inSel.add(p.id);
-    if((p.skills[bn]||0) < benchmark(bn)*(S.config.trainAssist||0.35)) trainEff[p.id]=bn; // chưa thạo -> trợ lực đào tạo ở nút thắt
-    p.caList.forEach(recompute);
-  }
-  // CRABTHING từ người dư (chỉ còn khi ngày ĐỦ)
+  // ĐẾM THEO CA: pick[ca] = ai LÀM ca đó (1 PT không nên làm cả 2 ca)
+  const pick={'Sáng':[],'Chiều':[],'Tối':[]};
+  const inca=(ca,p)=>pick[ca].some(x=>x.id===p.id);
+  const caTeam=ca=>pick[ca].map(p=>({...p,hours:caH,skills:boostSkills(p)}));
+  const caCap=ca=>pick[ca].reduce((a,p)=>a+pr(p)*caH,0); // NĂNG LỰC ca = Σ trọn gói × giờ
+  const dayCap=()=>caCap('Sáng')+caCap('Chiều')+caCap('Tối');
+  const workCount=p=>(inca('Sáng',p)?1:0)+(inca('Chiều',p)?1:0); // số ca đã xếp cho người này hôm nay
+  const uncoveredIn=(ca,cand)=>S.stages.filter(s=>!pick[ca].some(p=>(p.skills[s.key]||0)>0)&&cand.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key);
+  const bnOf=ca=>{const t=caTeam(ca);return t.length?coverageOf(Math.max(1,half),t).bottleneck.key:(S.stages[0]&&S.stages[0].key);};
+  // chọn người tốt nhất cho 1 ca: FT trước → giỏi khâu đang cần (phủ nền) → ít ngày công & TRÁNH 1 PT cả 2 ca → trọn gói cao (giữ yếu ≤ giỏi)
+  const bestFor=(ca,cand)=>{
+    const uncov=uncoveredIn(ca,cand);
+    let cs=cand; if(uncov.length){const cov=cand.filter(p=>uncov.some(k=>(p.skills[k]||0)>0)); if(cov.length)cs=cov;}
+    const bn=bnOf(ca);
+    const load=p=>(acc[p.id]||0)+(p.type==='PT'&&workCount(p)>0?2:0); // PT đã làm ca khác hôm nay -> phạt nhẹ để trải ca
+    return cs.slice().sort((a,b)=>
+      ((a.type==='PT'?1:0)-(b.type==='PT'?1:0))     // 1) FT trước PT
+      || ((b.skills[bn]||0)-(a.skills[bn]||0))        // 2) PHỦ KHÂU: giỏi khâu đang cần hơn
+      || (pr(b)-pr(a))                                // 3) NĂNG LỰC cao hơn (giữ yếu ≤ giỏi)
+      || (load(a)-load(b))                            // 4) cân bằng ngày công + tránh trùng 2 ca
+      || (((a.weekDays||99)-(b.weekDays||99))) )[0];
+  };
+  // (1) Mỗi ca: thêm người đến khi đủ NỬA chỉ tiêu (tối thiểu người/ca)
+  for(const ca of CAS){ let g=0; while(caCap(ca)<half-1e-6&&g++<300){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; pick[ca].push(bestFor(ca,cand)); } }
+  // (2) BÙ CHÉO: tổng ngày chưa đủ -> thêm vào ca còn người (ca khoẻ gánh thêm cho ca yếu)
+  let gx=0; while(dayCap()<N-1e-6&&gx++<300){ let added=false; for(const ca of CAS.slice().sort((a,b)=>caCap(a)-caCap(b))){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; pick[ca].push(bestFor(ca,cand)); added=true; break; } if(!added)break; }
+  // (3) MAN ĐỦ KHÂU mỗi ca: khâu nào pool phủ được mà pick chưa -> thêm người biết làm
+  for(const ca of CAS){ let g=0; while(g++<40){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; if(!uncoveredIn(ca,cand).length)break; pick[ca].push(bestFor(ca,cand)); } }
+  // admin tích thêm người vào nút thắt
+  Object.keys(trainMap).forEach(sid=>{ const p=pool.find(x=>x.id===sid); if(p)CAS.forEach(ca=>{ if(p.caList.includes(ca)&&!inca(ca,p))pick[ca].push(p); }); });
+  // (4) DỒN/LÓT khâu nút thắt: ngày THIẾU năng lực HOẶC ngày ĐÔNG còn khâu yếu -> người GIỎI khâu đó trước, hết giỏi thì người rảnh (theo gộp) vào lót (trợ lực). Hết người -> báo thiếu.
+  let g2=0; while(g2++<400){ let acted=false; for(const ca of CAS){ const team=caTeam(ca); if(!team.length)continue; const cov=coverageOf(Math.max(1,half),team); const capShort=caCap(ca)<half-1e-6; const stageWeak=busy&&!cov.fully; if(!capShort&&!stageWeak)continue; const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; const bn=cov.bottleneck.key; const p=cand.slice().sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||((acc[a.id]||0)-(acc[b.id]||0))||(pr(b)-pr(a)))[0]; pick[ca].push(p); if((p.skills[bn]||0)<benchmark(bn)*(S.config.trainAssist||0.35))trainEff[p.id]=bn; acted=true; } if(!acted)break; }
+  // gom SELECTED (union các ca), gắn pca = ca thực làm + cas = số ca thực làm
+  const byId={}; CAS.forEach(ca=>pick[ca].forEach(p=>{ if(!byId[p.id])byId[p.id]={...p,pca:[]}; if(!byId[p.id].pca.includes(ca))byId[p.id].pca.push(ca); }));
+  const selected=Object.values(byId); selected.forEach(p=>p.cas=p.pca.length);
+  const inSelAny=new Set(selected.map(p=>p.id));
+  // (5) CRAB từ người HOÀN TOÀN chưa chạy đơn: trọn gói CAO trước -> FT trước -> ít ngày công (xoay vòng theo công)
   const perCa=(S.config.crabRate||30)/2;
+  const fairCrab=(a,b)=>(pr(b)-pr(a)) || ((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || ((acc[a.id]||0)-(acc[b.id]||0));
   const crabSel=[]; let crabCap=0;
-  pool.filter(p=>!inSel.has(p.id)).sort(fairCrab).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSel.add(p.id);crabCap+=p.caList.length*perCa;} });
-  const rest=pool.filter(p=>!inSel.has(p.id));
-  // QUOTA linh hoạt: mỗi ca N/2; ca yếu thì ca khoẻ ĐẨY HIỆU SUẤT gánh bù
-  const capS=thr['Sáng'], capCT=thr['Chiều']+thr['Tối'];
+  pool.filter(p=>!inSelAny.has(p.id)).sort(fairCrab).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSelAny.add(p.id);crabCap+=p.caList.length*perCa;p.cas=p.caList.length;} });
+  const rest=pool.filter(p=>!inSelAny.has(p.id));
+  // QUOTA linh hoạt: mỗi ca N/2; ca khoẻ làm nhanh hơn -> ĐẨY chỉ tiêu lên gánh bù ca yếu
+  const capS=caCap('Sáng'), capCT=caCap('Chiều')+caCap('Tối');
   let qS=Math.min(capS,half), qC=Math.min(capCT,half), remN=N-qS-qC;
   if(remN>1e-6){const a=Math.min(remN,capS-qS);qS+=a;remN-=a;}
   if(remN>1e-6){const a=Math.min(remN,capCT-qC);qC+=a;remN-=a;}
-  const dayShort=remN>1e-6;
   // báo cáo từng ca (assign = phân vị trí thực tế để hiển thị; mọi khâu có việc đều có người)
   const caStat={};
   ['Sáng','Chiều','Tối'].forEach(ca=>{
-    const members=selected.filter(p=>p.caList.includes(ca));
-    const c=thr[ca];
+    const members=selected.filter(p=>p.pca&&p.pca.includes(ca));
+    const c=caCap(ca);
     const need=ca==='Tối'?0:half;
     const quota=ca==='Sáng'?qS:(ca==='Chiều'?qC:0);
     let st;
@@ -1303,8 +1278,10 @@ function planDay(d, acc){
   pool.forEach(p=>{ let c=0; wk.forEach(dd=>{const rr=S.reg[fmt(dd)]; if(rr&&rr[p.id]&&rr[p.id].length)c++;}); p.weekDays=c; });
   const trainMap=(S.train&&S.train[ds])||{};
   if(t==='closed'){const sd=selectDay(0,0,[],acc,{});return {ds,d,type:t,orders:0,crabD:0,sd,ord:{selected:[],status:'ok',cov:coverageOf(0,[]),capacity:0},crab:{selected:[],short:false,more:0,demand:0,cap:0},finalRest:pool,kind:'closed',caStat:sd.caStat};}
-  const sd=selectDay(orders, crabD, pool, acc, trainMap);
-  const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:p.hours}))); // nhận xét kỹ năng cấp ngày
+  // NGÀY ĐÔNG: đỉnh / 15-25 / có đơn dồn từ ngày nghỉ -> dồn toàn lực phủ khâu, lót khâu yếu
+  const busy = (t==='peak'||t==='mid') || rolledOrders(d)>0.5;
+  const sd=selectDay(orders, crabD, pool, acc, trainMap, busy);
+  const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:(p.pca?p.pca.length:p.caList.length)*S.config.caHours}))); // nhận xét kỹ năng cấp ngày (theo ca thực làm)
   const ordShort=sd.ordersCap<orders-1e-6;
   const ordStatus=ordShort?'short_people':(!cov.fully?'short_skill':'ok');
   const leftoverH=sd.rest.reduce((a,p)=>a+p.hours,0);
