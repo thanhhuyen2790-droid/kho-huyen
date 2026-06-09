@@ -94,6 +94,7 @@
   .catbl td:last-child{white-space:nowrap}
   .reinf{margin-top:6px;background:#eef3ff;border:1px solid #cdd9f5;border-radius:8px;padding:6px 8px;font-size:11.5px}
   .reinf>div{margin-top:3px;display:flex;flex-wrap:wrap;gap:2px}
+  .slownote{margin-top:6px;background:#fff5e9;border:1px solid #f3d6ad;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#7a4a12}
   .caRest{margin-top:6px;background:#f6f6f8;border:1px dashed #d4d4dd;border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--muted)}
   .caSec{border-top:2px solid var(--line);margin-top:9px;padding-top:7px}
   .caHead{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
@@ -1168,8 +1169,9 @@ function selectDay(N, crabD, pool, acc, trainMap){
   const caH=S.config.caHours, half=N/2;
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TỐC ĐỘ TRỌN GÓI đơn/h (làm đủ 7 khâu)
   const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
-  // CHẠY ĐƠN — thứ tự ưu tiên: Full-time -> Full-day -> Trọn-gói NHANH hơn -> Ít ngày công hơn. PT chỉ bổ sung khi FT chưa đủ.
-  const fair=(a,b)=>((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || ((isFull(b)?1:0)-(isFull(a)?1:0)) || (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0));
+  // CHẠY ĐƠN — thứ tự ưu tiên: ① Full-time  ② Trọn-gói NHANH hơn (năng lực)  ③ CÂN BẰNG ngày công: người đăng ký ÍT ngày/tuần được ưu tiên (làm đúng ngày họ rảnh) -> rồi ai đã làm ÍT công hơn  ④ full-day chỉ phá hoà cuối.
+  // Nhờ ③: PT đăng ký ít ngày KHÔNG bị bỏ; PT đăng ký cả tuần thành lực lượng "lấp chỗ trống" -> ngày công các PT cân bằng hơn.
+  const fair=(a,b)=>((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || (pr(b)-pr(a)) || (((a.weekDays||99)-(b.weekDays||99))) || ((acc[a.id]||0)-(acc[b.id]||0)) || ((isFull(b)?1:0)-(isFull(a)?1:0));
   // CRABTHING: ít ngày công trước -> PT trước (để FT chạy đơn) -> người trọn-gói CHẬM hơn làm crab trước
   const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(a)-pr(b));
   const onePersonCa=Math.max(1,(S.config.prod||20)*caH); // 1 người 1 ca làm được ~ 20×giờ đơn
@@ -1249,22 +1251,37 @@ function selectDay(N, crabD, pool, acc, trainMap){
     else if(c<half-1e-6)st='thiếu';   // năng lực ca < chỉ tiêu N/2
     else st='đủ';
     const crabHere=crabSel.filter(p=>p.caList.includes(ca));
-    let weak=[], roles={}, assignH={}, gap=[], bnKey=null;
+    let weak=[], roles={}, assignH={}, gap=[], bnKey=null, slowKeys=[], slowConflict=[], slowReco=null;
     if(ca!=='Tối'&&members.length&&N>0){
       const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)}));
       const covCa=coverageOf(Math.max(1,half), mm);
       gap=covCa.skillGap; bnKey=covCa.bottleneck.key;
       S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(covCa.skillGap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
-      members.forEach(p=>{const a=covCa.assign[p.id]||{}; assignH[p.id]=a;
-        let r=Object.entries(a).filter(([,h])=>h>0.001).sort((x,y)=>y[1]-x[1]).slice(0,2).map(([k])=>k);
-        if(trainEff[p.id]&&!r.includes(trainEff[p.id]))r=[trainEff[p.id],...r].slice(0,2); // người được bổ sung luôn hiện ở khâu nút thắt
-        if(!r.length){let bk=null,bb=0;S.stages.forEach(s=>{const v=p.skills[s.key]||0;if(v>bb){bb=v;bk=s.key;}});if(bk)r=[bk];}
-        roles[p.id]=r;});
-      S.stages.forEach(s=>{ if(members.some(p=>(roles[p.id]||[]).includes(s.key)))return;
-        let bp=null,bh=0; members.forEach(p=>{const h=(assignH[p.id]||{})[s.key]||0; if(h>bh){bh=h;bp=p;}});
-        if(bp&&bh>0.001)roles[bp.id].push(s.key); });
+      members.forEach(p=>{assignH[p.id]=covCa.assign[p.id]||{}; roles[p.id]=[];});
+      slowKeys=S.stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu CHẬM nhất (nút thắt) — vd Gói hộp, Bọc xóc
+      const ownSlow=p=>roles[p.id].some(k=>slowKeys.includes(k));
+      // (a) người được đào tạo/bổ sung -> gắn vào đúng khâu nút thắt
+      members.forEach(p=>{ if(trainEff[p.id]&&!roles[p.id].includes(trainEff[p.id]))roles[p.id].push(trainEff[p.id]); });
+      // (b) KHÂU CHẬM: mỗi khâu 1 người CHUYÊN, cố KHÁC người -> KHÔNG để 1 người ôm 2 khâu chậm (chậm chồng chậm)
+      slowKeys.forEach(k=>{ if(members.some(p=>roles[p.id].includes(k)))return;
+        const cand=members.filter(p=>(p.skills[k]||0)>0&&!ownSlow(p)).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0]
+              || members.filter(p=>(p.skills[k]||0)>0).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0]
+              || members.slice().sort((a,b)=>roles[a.id].length-roles[b.id].length)[0];
+        if(cand)roles[cand.id].push(k); });
+      // (c) KHÂU NHANH: gộp được -> giao cho người làm được & đang ÍT vai trò nhất (người mạnh khâu nhanh xong dồn sang hỗ trợ)
+      S.stages.map(s=>s.key).filter(k=>!slowKeys.includes(k)).forEach(k=>{ if(members.some(p=>roles[p.id].includes(k)))return;
+        const cand=members.filter(p=>(p.skills[k]||0)>0).sort((a,b)=>(roles[a.id].length-roles[b.id].length)||((b.skills[k]||0)-(a.skills[k]||0)))[0]
+              || members.slice().sort((a,b)=>roles[a.id].length-roles[b.id].length)[0];
+        if(cand)roles[cand.id].push(k); });
+      // (d) ai chưa có vai trò -> gắn khâu giỏi nhất
+      members.forEach(p=>{ if(roles[p.id].length)return; let bk=null,bb=-1;S.stages.forEach(s=>{const v=p.skills[s.key]||0;if(v>bb){bb=v;bk=s.key;}});if(bk)roles[p.id].push(bk); });
+      slowConflict=members.filter(p=>roles[p.id].filter(k=>slowKeys.includes(k)).length>=2).map(p=>p.name); // còn ai ôm 2 khâu chậm = hết người để tách -> cảnh báo thêm người
+      // khâu chậm nhất đang là nút thắt? đếm người đứng khâu đó
+      const slowBn = slowKeys.includes(bnKey)?bnKey:slowKeys[0];
+      const slowStaff = members.filter(p=>(roles[p.id]||[]).includes(slowBn)).length;
+      slowReco={key:slowBn, staff:slowStaff, isBn:bnKey===slowBn};
     }
-    caStat[ca]={members,cap:c,need,quota,st,crab:crabHere,weak,roles,assignH,gap,bnKey,
+    caStat[ca]={members,cap:c,need,quota,st,crab:crabHere,weak,roles,assignH,gap,bnKey,slowKeys,slowConflict,slowReco,
       morePeople: st==='thiếu'? Math.max(1,Math.ceil((half-c)/onePersonCa)) : 0};
   });
   return {selected,crabSel,rest,caStat,ordersCap:dayCap(),crabCap,crabD,trainEff,
@@ -1275,6 +1292,9 @@ function selectDay(N, crabD, pool, acc, trainMap){
 function planDay(d, acc){
   const ds=fmt(d), t=dayType(d), orders=ordersOn(d), crabD=crabDemandOn(d);
   const pool=dayPeople(ds);
+  // số ngày đăng ký trong TUẦN của mỗi người -> để ưu tiên người đăng ký ÍT ngày, cân bằng ngày công
+  const wk=datesOfWeek(fmt(mondayOf(d)));
+  pool.forEach(p=>{ let c=0; wk.forEach(dd=>{const rr=S.reg[fmt(dd)]; if(rr&&rr[p.id]&&rr[p.id].length)c++;}); p.weekDays=c; });
   const trainMap=(S.train&&S.train[ds])||{};
   if(t==='closed'){const sd=selectDay(0,0,[],acc,{});return {ds,d,type:t,orders:0,crabD:0,sd,ord:{selected:[],status:'ok',cov:coverageOf(0,[]),capacity:0},crab:{selected:[],short:false,more:0,demand:0,cap:0},finalRest:pool,kind:'closed',caStat:sd.caStat};}
   const sd=selectDay(orders, crabD, pool, acc, trainMap);
@@ -1582,11 +1602,19 @@ function renderWeekView(){
       const crabRow=cs.crab.length?`<tr><td>🦀 Crabthing</td><td>${cs.crab.map(p=>esc(p.name)).join('<br>')}</td><td>${Math.round((S.config.crabRate||30)/2)} SKU</td></tr>`:'';
       const trainedHere=cs.members.filter(p=>trainMap[p.id]);
       const trainNote = (ca!=='Tối'&&trainedHere.length)?`<div class="reinf">🎓 Đã dồn ${trainedHere.length} người dư vào khâu nút thắt <b>${stageName(cs.bnKey)}</b> (trợ lực ${Math.round((S.config.trainAssist||0.35)*100)}% chuẩn + đào tạo): ${trainedHere.map(p=>esc(p.name)).join(', ')}</div>`:'';
+      // LỚP KHÂU CHẬM (chỉ cảnh báo + gợi ý, không đổi cách chọn người)
+      let slowNote='';
+      if(ca!=='Tối'&&cs.slowReco){
+        const bits=[];
+        if(cs.slowConflict&&cs.slowConflict.length) bits.push(`<b>${cs.slowConflict.join(', ')}</b> đang phải ôm 2 khâu chậm (hết người để tách) — nên <b>thêm người</b> cho khâu chậm`);
+        if(cs.slowReco.isBn) bits.push(`khâu chậm nhất <b>${stageName(cs.slowReco.key)}</b> đang ${cs.slowReco.staff} người${cs.st==='thiếu'?` — nên <b>thêm người</b> vào đây để gỡ nút thắt`:''}`);
+        if(bits.length) slowNote=`<div class="slownote">🐢 ${bits.join('; ')}.</div>`;
+      }
       // CHO NGHỈ theo ĐÚNG CA: người dư đăng ký ca này (chỉ khi ngày đã đủ) + người đã xác nhận nghỉ thuộc ca này
       const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
       const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
       const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
-      return `<div class="caSec">${header}${perf}<table class="catbl"><thead><tr><th>Khâu / quy trình</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${trainNote}${restBlock}</div>`;
+      return `<div class="caSec">${header}${perf}<table class="catbl"><thead><tr><th>Khâu / quy trình</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${slowNote}${trainNote}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
