@@ -460,7 +460,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.09-2 (cân bằng ngày công)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.09-3 (năng lực ưu tiên)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1178,7 +1178,7 @@ function selectDay(N, crabD, pool, acc, trainMap){
     const ta=a.type==='PT'?1:0, tb=b.type==='PT'?1:0;
     if(ta!==tb)return ta-tb; // FT luôn trước PT
     if(ta===0)return (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0)); // FT (nền): theo năng lực
-    return ((acc[a.id]||0)-(acc[b.id]||0)) || (((a.weekDays||99)-(b.weekDays||99))) || (pr(b)-pr(a)) || ((isFull(b)?1:0)-(isFull(a)?1:0)); // PT: CÂN BẰNG ngày công trước
+    return (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0)) || (((a.weekDays||99)-(b.weekDays||99))) || ((isFull(b)?1:0)-(isFull(a)?1:0)); // PT: NĂNG LỰC trước (người giỏi lên dây chuyền); người NGANG TÀI mới cân bằng ngày công
   };
   // CRABTHING: CÂN BẰNG ngày công trước (ai ÍT công nhất làm crab, người làm nhiều được nghỉ) -> PT trước -> khi HOÀ acc thì người trọn-gói CAO hơn gánh crab (để người yếu khỏi bị dồn crab mỗi ngày)
   const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(b)-pr(a));
@@ -1265,25 +1265,23 @@ function selectDay(N, crabD, pool, acc, trainMap){
       const covCa=coverageOf(Math.max(1,half), mm);
       gap=covCa.skillGap; bnKey=covCa.bottleneck.key;
       S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(covCa.skillGap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
-      members.forEach(p=>{assignH[p.id]=covCa.assign[p.id]||{}; roles[p.id]=[];});
       slowKeys=S.stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu CHẬM nhất (nút thắt) — vd Gói hộp, Bọc xóc
-      const ownSlow=p=>roles[p.id].some(k=>slowKeys.includes(k));
-      // (a) người được đào tạo/bổ sung -> gắn vào đúng khâu nút thắt
-      members.forEach(p=>{ if(trainEff[p.id]&&!roles[p.id].includes(trainEff[p.id]))roles[p.id].push(trainEff[p.id]); });
-      // (b) KHÂU CHẬM: mỗi khâu 1 người CHUYÊN, cố KHÁC người -> KHÔNG để 1 người ôm 2 khâu chậm (chậm chồng chậm)
-      slowKeys.forEach(k=>{ if(members.some(p=>roles[p.id].includes(k)))return;
-        const cand=members.filter(p=>(p.skills[k]||0)>0&&!ownSlow(p)).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0]
-              || members.filter(p=>(p.skills[k]||0)>0).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0]
-              || members.slice().sort((a,b)=>roles[a.id].length-roles[b.id].length)[0];
-        if(cand)roles[cand.id].push(k); });
-      // (c) KHÂU NHANH: gộp được -> giao cho người làm được & đang ÍT vai trò nhất (người mạnh khâu nhanh xong dồn sang hỗ trợ)
-      S.stages.map(s=>s.key).filter(k=>!slowKeys.includes(k)).forEach(k=>{ if(members.some(p=>roles[p.id].includes(k)))return;
-        const cand=members.filter(p=>(p.skills[k]||0)>0).sort((a,b)=>(roles[a.id].length-roles[b.id].length)||((b.skills[k]||0)-(a.skills[k]||0)))[0]
-              || members.slice().sort((a,b)=>roles[a.id].length-roles[b.id].length)[0];
-        if(cand)roles[cand.id].push(k); });
-      // (d) ai chưa có vai trò -> gắn khâu giỏi nhất
-      members.forEach(p=>{ if(roles[p.id].length)return; let bk=null,bb=-1;S.stages.forEach(s=>{const v=p.skills[s.key]||0;if(v>bb){bb=v;bk=s.key;}});if(bk)roles[p.id].push(bk); });
-      slowConflict=members.filter(p=>roles[p.id].filter(k=>slowKeys.includes(k)).length>=2).map(p=>p.name); // còn ai ôm 2 khâu chậm = hết người để tách -> cảnh báo thêm người
+      // VAI TRÒ = theo coverageOf phân GIỜ tối ưu năng lực: người NHANH được dồn vào khâu cần, người yếu chỉ nhận khâu họ làm ỔN (ko bị ép vào nút thắt)
+      members.forEach(p=>{const a=covCa.assign[p.id]||{}; assignH[p.id]=a;
+        let r=Object.entries(a).filter(([,h])=>h>0.001).sort((x,y)=>y[1]-x[1]).map(([k])=>k);
+        if(trainEff[p.id]&&!r.includes(trainEff[p.id]))r=[trainEff[p.id],...r];
+        roles[p.id]=r.slice(0,3);});
+      // đảm bảo MỌI khâu có người: khâu trống -> giao cho người GIỎI NHẤT khâu đó (không phải người rảnh nhất)
+      S.stages.forEach(s=>{ if(members.some(p=>(roles[p.id]||[]).includes(s.key)))return;
+        let bp=members.filter(p=>(p.skills[s.key]||0)>0).sort((a,b)=>(b.skills[s.key]||0)-(a.skills[s.key]||0))[0];
+        if(!bp){bp=null;let bh=0;members.forEach(p=>{const h=(assignH[p.id]||{})[s.key]||0;if(h>bh){bh=h;bp=p;}});}
+        if(bp)roles[bp.id].push(s.key); });
+      // TÁCH khâu chậm: nếu 1 người ôm cả 2 khâu chậm -> nhả khâu yếu hơn cho người KHÁC giỏi khâu đó
+      members.forEach(p=>{ const mine=(roles[p.id]||[]).filter(k=>slowKeys.includes(k)); if(mine.length<2)return;
+        const drop=(p.skills[mine[0]]||0)>=(p.skills[mine[1]]||0)?mine[1]:mine[0];
+        const cand=members.filter(q=>q.id!==p.id&&(q.skills[drop]||0)>0&&!(roles[q.id]||[]).some(k=>slowKeys.includes(k))).sort((a,b)=>(b.skills[drop]||0)-(a.skills[drop]||0))[0];
+        if(cand){roles[p.id]=roles[p.id].filter(k=>k!==drop); if(!roles[cand.id].includes(drop))roles[cand.id]=[drop,...roles[cand.id]].slice(0,3);} });
+      slowConflict=members.filter(p=>roles[p.id].filter(k=>slowKeys.includes(k)).length>=2).map(p=>p.name);
       // khâu chậm nhất đang là nút thắt? đếm người đứng khâu đó
       const slowBn = slowKeys.includes(bnKey)?bnKey:slowKeys[0];
       const slowStaff = members.filter(p=>(roles[p.id]||[]).includes(slowBn)).length;
