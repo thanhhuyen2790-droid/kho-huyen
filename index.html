@@ -1169,11 +1169,16 @@ function selectDay(N, crabD, pool, acc, trainMap){
   const caH=S.config.caHours, half=N/2;
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TỐC ĐỘ TRỌN GÓI đơn/h (làm đủ 7 khâu)
   const isFull=p=>p.caList.includes('Sáng')&&p.caList.includes('Chiều');
-  // CHẠY ĐƠN — thứ tự ưu tiên: ① Full-time  ② Trọn-gói NHANH hơn (năng lực)  ③ CÂN BẰNG ngày công: người đăng ký ÍT ngày/tuần được ưu tiên (làm đúng ngày họ rảnh) -> rồi ai đã làm ÍT công hơn  ④ full-day chỉ phá hoà cuối.
-  // Nhờ ③: PT đăng ký ít ngày KHÔNG bị bỏ; PT đăng ký cả tuần thành lực lượng "lấp chỗ trống" -> ngày công các PT cân bằng hơn.
-  const fair=(a,b)=>((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || (pr(b)-pr(a)) || (((a.weekDays||99)-(b.weekDays||99))) || ((acc[a.id]||0)-(acc[b.id]||0)) || ((isFull(b)?1:0)-(isFull(a)?1:0));
-  // CRABTHING: ít ngày công trước -> PT trước (để FT chạy đơn) -> người trọn-gói CHẬM hơn làm crab trước
-  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(a)-pr(b));
+  // CHẠY ĐƠN — Full-time là lực lượng NỀN (ưu tiên tuyệt đối, xếp theo năng lực). Part-time: CÂN BẰNG NGÀY CÔNG toàn tuần là chính,
+  // ai đã làm ÍT ngày hơn được chọn trước (xoay đều, tránh dồn 1-2 ngày rồi nghỉ hẳn) -> người đăng ký ít ngày -> năng lực chỉ là phá hoà.
+  const fair=(a,b)=>{
+    const ta=a.type==='PT'?1:0, tb=b.type==='PT'?1:0;
+    if(ta!==tb)return ta-tb; // FT luôn trước PT
+    if(ta===0)return (pr(b)-pr(a)) || ((acc[a.id]||0)-(acc[b.id]||0)); // FT (nền): theo năng lực
+    return ((acc[a.id]||0)-(acc[b.id]||0)) || (((a.weekDays||99)-(b.weekDays||99))) || (pr(b)-pr(a)) || ((isFull(b)?1:0)-(isFull(a)?1:0)); // PT: CÂN BẰNG ngày công trước
+  };
+  // CRABTHING: CÂN BẰNG ngày công trước (ai ÍT công nhất làm crab, người làm nhiều được nghỉ) -> PT trước -> khi HOÀ acc thì người trọn-gói CAO hơn gánh crab (để người yếu khỏi bị dồn crab mỗi ngày)
+  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?0:1)-(b.type==='PT'?0:1)) || (pr(b)-pr(a));
   const onePersonCa=Math.max(1,(S.config.prod||20)*caH); // 1 người 1 ca làm được ~ 20×giờ đơn
   const selected=[], inSel=new Set();
   // kỹ năng có TRỢ LỰC đào tạo: người được bổ sung vào 1 khâu -> tối thiểu = chuẩn × hệ số đào tạo (vừa học vừa phụ việc)
