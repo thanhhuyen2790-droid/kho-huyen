@@ -87,11 +87,12 @@
   .schedtbl .closedc{background:#f4f5f8;text-align:center;color:var(--muted)}
   .restchk{display:inline-flex;align-items:center;gap:3px;margin:2px 8px 2px 0;cursor:pointer;font-size:11.5px}
   .restchk.on{color:#8a6500;font-weight:700}
-  .catbl{width:100%;border-collapse:collapse;margin-top:5px;font-size:11.5px}
-  .catbl th,.catbl td{border:1px solid var(--line);padding:3px 6px;text-align:left;vertical-align:top}
+  .catbl{width:100%;border-collapse:collapse;margin-top:5px;font-size:11.5px;table-layout:fixed}
+  .catbl th,.catbl td{border:1px solid var(--line);padding:3px 5px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
   .catbl th{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase}
-  .catbl td:first-child{font-weight:600;white-space:nowrap}
-  .catbl td:last-child{white-space:nowrap}
+  .catbl td:first-child{font-weight:600}
+  .catbl col.c1{width:42%}.catbl col.c2{width:34%}.catbl col.c3{width:24%}
+  .catbl .sttrack{width:22px!important;flex:none}
   .reinf{margin-top:6px;background:#eef3ff;border:1px solid #cdd9f5;border-radius:8px;padding:6px 8px;font-size:11.5px}
   .reinf>div{margin-top:3px;display:flex;flex-wrap:wrap;gap:2px}
   .optbar{grid-column:1/-1;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:4px}
@@ -480,7 +481,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-14 (mô hình dây chuyền + đệm an toàn)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-15 (sửa tràn bảng tốc độ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1757,7 +1758,7 @@ function renderWeekView(){
         ? `<div class="metric"><b>Năng lực ${chainOn?'dây chuyền ':''}${capMain}</b> / Chỉ tiêu <b>${tgt}</b> đơn → ${verdict}${dualNote}${cs.quota>cs.need+1?` <span class="pill" style="color:#6a45d6">gánh bù ca kia +${Math.round(cs.quota-cs.need)}</span>`:''}</div>`
         : `<div class="metric">Hỗ trợ thêm ~${capMain} đơn</div>`;
       const skCell=(p,k)=>{const train=trainMap[p.id]===k; const rt=train?Math.max(p.skills[k]||0,benchmark(k)*(S.config.trainAssist||0.35)):(p.skills[k]||0);const bm=benchmark(k);const ratio=bm>0?rt/bm:0;const col=ratio>=1?'var(--ok)':ratio>=0.6?'var(--warn)':'var(--bad)';
-        return `<span style="display:inline-flex;align-items:center;gap:3px"><span class="sttrack" style="width:34px;flex:none"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span><b style="font-size:11px;color:${col}">${Math.round(rt)}</b>${train?'<span title="đang đào tạo">🎓</span>':''}</span>`;};
+        return `<span style="display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap"><span class="sttrack"><span class="stfill" style="width:${Math.min(100,Math.round(ratio*100))}%;background:${col}"></span></span><b style="font-size:11px;color:${col}">${Math.round(rt)}</b>${train?'<span title="đang đào tạo">🎓</span>':''}</span>`;};
       let body='';
       if(ca==='Tối'){
         body=cs.members.length?`<tr><td>Hỗ trợ</td><td>${cs.members.map(p=>esc(p.name)).join('<br>')}</td><td>—</td></tr>`:'';
@@ -1792,7 +1793,7 @@ function renderWeekView(){
       const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
       const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
       const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
-      return `<div class="caSec">${header}${perf}<table class="catbl"><thead><tr><th>Khâu / quy trình</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
+      return `<div class="caSec">${header}${perf}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
