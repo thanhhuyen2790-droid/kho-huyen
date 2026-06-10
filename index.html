@@ -498,7 +498,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-21 (chỉ tiêu ca bám sát năng lực thực — hết 'dư' giả)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-23 (số đơn mỗi người + thời gian hoàn thành ca)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1519,7 +1519,9 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
     let weak=[], roles={}, assignH={}, gap=[], bnKey=null, slowKeys=[], slowConflict=[], slowReco=null;
     if(ca!=='Tối'&&members.length&&N>0){
       const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)}));
-      const covCa=coverageOf(Math.max(1,tgt(ca)), mm, true); // CÓ sàn: mô phỏng phản ánh việc dồn người (kể cả chưa thạo) vào khâu nghẽn
+      // mô phỏng vai trò chạy tới NĂNG LỰC TỐI ĐA của team (không dừng ở chỉ tiêu) -> KHÔNG ai ngồi không: người rảnh tự dồn vào khâu nghẽn
+      const covN=Math.max(tgt(ca), cChain/(1-chainBuffer()));
+      const covCa=coverageOf(Math.max(1,covN), mm, true); // CÓ sàn: mô phỏng phản ánh việc dồn người (kể cả chưa thạo) vào khâu nghẽn
       gap=S.stages.filter(s=>!members.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key); // khâu KHÔNG ai biết làm thật -> cảnh báo
       bnKey=covCa.bottleneck.key;
       S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(gap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
@@ -1857,6 +1859,11 @@ function renderWeekView(){
       const header=`<div class="caHead">${icon} <b>CA ${ca.toUpperCase()}</b> — ${cs.members.length+cs.crab.length} người <span class="badge ${b[0]}">${b[1]}</span></div>`;
       const chainOn=useChain();
       const capMain=Math.round(cs.capMain!=null?cs.capMain:cs.cap), capTron=Math.round(cs.cap), tgt=Math.round(cs.need), diff=capMain-tgt, slk=Math.round(caSlack(cs.need)); // chỉ tiêu ca: Sáng 60% · Chiều 40%
+      // HIỆU SUẤT THỜI GIAN: chỉ tiêu cần ít hơn năng lực -> hoàn thành SỚM hơn 1 ca (mọi người dồn sức hỗ trợ nhau)
+      const fTime = (ca!=='Tối'&&cs.capMain>0)?Math.min(1,cs.need/cs.capMain):1;
+      const makespan = (S.config.caHours||4)*fTime;
+      const timeNote = (ca!=='Tối'&&cs.st==='đủ'&&makespan < (S.config.caHours||4)-0.05)
+        ? `<div class="flownote" style="background:#eef3ff;border-color:#cdd9f5;color:#274690">⏱️ <b>Hoàn thành chỉ tiêu ~${makespan.toFixed(1)}h</b> / ${S.config.caHours||4}h — dư ~${((S.config.caHours||4)-makespan).toFixed(1)}h mỗi người (đã dồn sức hỗ trợ nhau), có thể làm việc khác trong thực tế.</div>` : '';
       const verdict = ca==='Tối'?'' : (diff>=-slk?`<span style="color:var(--ok);font-weight:700">ĐẠT${diff>0?' (dư '+diff+')':''}</span>`:`<span style="color:var(--bad);font-weight:700">THIẾU ${-diff} đơn</span>`);
       const dualNote = (ca!=='Tối'&&chainOn)?` <span class="pill" title="Σ năng suất trọn gói từng người — chỉ để đối chiếu">Σ trọn gói ${capTron}</span>`:'';
       const perf= ca!=='Tối'
@@ -1877,7 +1884,8 @@ function renderWeekView(){
           const isBn=(cs.slowKeys||[]).includes(s.key); const tag=isBn?' <span class="bn-tag">🔴 nút thắt</span>':'';
           const ppl=cs.members.filter(p=>(cs.roles&&cs.roles[p.id]||[]).includes(s.key));
           if(!ppl.length)return head+`<tr><td>${esc(s.name)}${tag}</td><td colspan="2" style="color:var(--bad)">⛔ chưa có người</td></tr>`;
-          const hrOf=p=>{const hh=(cs.assignH&&cs.assignH[p.id]&&cs.assignH[p.id][s.key])||0; return hh>=0.15?` <small class="hint">${hh.toFixed(1)}h</small>`:'';};
+          const stRate=p=>{ if(trainMap[p.id]===s.key)return Math.max(p.skills[s.key]||0, benchmark(s.key)*(S.config.trainAssist||0.35)); const v=p.skills[s.key]||0; return v>0?v:floorRateOf(s); };
+          const hrOf=p=>{ const hh=((cs.assignH&&cs.assignH[p.id]&&cs.assignH[p.id][s.key])||0)*fTime; if(hh<0.15)return ''; const od=Math.round(hh*stRate(p)); return ` <small class="hint">${hh.toFixed(1)}h · ${od}đ</small>`; }; // giờ làm (đã quy đổi theo thời gian hoàn thành) · số đơn xử lý
           return head+`<tr><td>${esc(s.name)}${tag}</td><td>${ppl.map(p=>esc(p.name)+hrOf(p)+(trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':'')).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
         }).join('');
       }
@@ -1899,7 +1907,7 @@ function renderWeekView(){
       const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
       const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
       const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
-      return `<div class="caSec">${header}${perf}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
+      return `<div class="caSec">${header}${perf}${timeNote}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
