@@ -498,7 +498,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-18 (gợi ý lịch + bảng xem trước cho quản lý)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-21 (chỉ tiêu ca bám sát năng lực thực — hết 'dư' giả)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1519,26 +1519,19 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
     let weak=[], roles={}, assignH={}, gap=[], bnKey=null, slowKeys=[], slowConflict=[], slowReco=null;
     if(ca!=='Tối'&&members.length&&N>0){
       const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)}));
-      const covCa=coverageOf(Math.max(1,tgt(ca)), mm);
-      gap=covCa.skillGap; bnKey=covCa.bottleneck.key;
-      S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(covCa.skillGap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
+      const covCa=coverageOf(Math.max(1,tgt(ca)), mm, true); // CÓ sàn: mô phỏng phản ánh việc dồn người (kể cả chưa thạo) vào khâu nghẽn
+      gap=S.stages.filter(s=>!members.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key); // khâu KHÔNG ai biết làm thật -> cảnh báo
+      bnKey=covCa.bottleneck.key;
+      S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(gap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
       slowKeys=S.stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu CHẬM nhất (nút thắt) — vd Gói hộp, Bọc xóc
-      // VAI TRÒ — duyệt khâu CHẬM→NHANH, PHỦ CHẮC mọi khâu có người biết làm.
-      // Khâu nghẽn/tốn thời gian -> người GIỎI nhất & 2 khâu nghẽn 2 người RIÊNG. Khâu nhanh -> người đang ít vai trò (kém hơn) lo, người mạnh xong khâu nhanh thì dồn sang lót.
-      members.forEach(p=>{assignH[p.id]=covCa.assign[p.id]||{}; roles[p.id]=[];});
-      const onBn=p=>roles[p.id].some(k=>slowKeys.includes(k));
-      members.forEach(p=>{ if(trainEff[p.id]&&!roles[p.id].includes(trainEff[p.id]))roles[p.id].push(trainEff[p.id]); }); // người lót/đào tạo gắn sẵn vào nút thắt
-      S.stages.slice().sort((a,b)=>a.rate-b.rate).forEach(s=>{
-        const k=s.key; if(members.some(p=>roles[p.id].includes(k)))return;
-        let cap=members.filter(p=>(p.skills[k]||0)>0); if(!cap.length)cap=members.slice(); // chưa ai biết -> vẫn cử 1 người (học việc) để không bỏ trống
-        let pickers=cap.slice();
-        if(slowKeys.includes(k)){ const free=cap.filter(p=>!onBn(p)); if(free.length)pickers=free; // 2 khâu nghẽn KHÁC người
-          pickers.sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0)); }                                  // khâu nghẽn -> GIỎI nhất
-        else pickers.sort((a,b)=>(roles[a.id].length-roles[b.id].length)||((b.skills[k]||0)-(a.skills[k]||0))); // khâu nhanh -> trải đều rồi giỏi
-        roles[pickers[0].id].push(k);
-      });
-      // người đã chọn mà CHƯA có vai trò -> LÓT vào khâu nghẽn (khâu chậm họ giúp được, hoặc khâu đang thắt)
-      members.forEach(p=>{ if(roles[p.id].length)return; const fam=personFamily(p); const k=slowKeys.find(k=>(p.skills[k]||0)>0&&stageFamily(k)===fam)||slowKeys.find(k=>(p.skills[k]||0)>0)||slowKeys[0]||bnKey; if(k){roles[p.id].push(k); if((p.skills[k]||0)<benchmark(k)*(S.config.trainAssist||0.35))trainEff[p.id]=k;} });
+      // VAI TRÒ = BẢN PHÂN GIỜ THỰC TẾ của mô phỏng dây chuyền: khâu nào người này bỏ ≥0.15h coi là LÀM khâu đó.
+      // Nhờ vậy người làm khâu NHANH xong (vd Tít) tự hiện sang phụ khâu CHẬM/NGHẼN — đúng cách kho chạy.
+      const MINH=0.3; // ≥18 phút mới coi là 1 khâu (lọc mẩu vụn), mỗi người tối đa 3 khâu chính cho gọn
+      members.forEach(p=>{ const a=covCa.assign[p.id]||{}; assignH[p.id]=a; roles[p.id]=S.stages.map(s=>s.key).filter(k=>(a[k]||0)>=MINH).sort((x,y)=>(a[y]||0)-(a[x]||0)).slice(0,3); });
+      members.forEach(p=>{ if(trainEff[p.id]&&!roles[p.id].includes(trainEff[p.id]))roles[p.id].push(trainEff[p.id]); });
+      // VÉT: ai chưa có giờ (rảnh) -> lót khâu nghẽn; khâu nào chưa ai trong vai trò -> cử người biết (hoặc học việc) để ko bỏ trống
+      members.forEach(p=>{ if(roles[p.id].length)return; const k=slowKeys.find(k=>(p.skills[k]||0)>0)||slowKeys[0]||bnKey; if(k){roles[p.id].push(k); if((p.skills[k]||0)<benchmark(k)*(S.config.trainAssist||0.35))trainEff[p.id]=k;} });
+      S.stages.forEach(s=>{ const k=s.key; if(members.some(p=>roles[p.id].includes(k)))return; let cap=members.filter(p=>(p.skills[k]||0)>0); if(!cap.length)cap=members.slice(); roles[cap[0].id].push(k); });
       slowConflict=members.filter(p=>roles[p.id].filter(k=>slowKeys.includes(k)).length>=2).map(p=>p.name);
       const slowBn = slowKeys.includes(bnKey)?bnKey:slowKeys[0];
       const slowStaff = members.filter(p=>(roles[p.id]||[]).includes(slowBn)).length;
@@ -1547,6 +1540,16 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
     caStat[ca]={members,cap:c,capChain:cChain,capMain:cMain,need,quota,st,crab:crabHere,weak,roles,assignH,gap,bnKey,slowKeys,slowConflict,slowReco,
       morePeople: st==='thiếu'? Math.max(1,Math.ceil((tgt(ca)-cMain)/onePersonCa)) : 0};
   });
+  // HẬU XỬ LÝ chỉ tiêu hiển thị: ngày THIẾU thì ca đang chạy VƯỢT chỉ tiêu mặc định -> nâng chỉ tiêu ca đó lên đúng NĂNG LỰC THỰC (khỏi báo "dư" giả), phần hụt dồn về ca yếu để nhãn trung thực + tận dụng tối đa
+  (function(){ const cas=['Sáng','Chiều'].filter(ca=>caStat[ca]&&caStat[ca].members.length); if(cas.length<2)return;
+    const capM=ca=>caStat[ca].capMain||0; const dayCapM=cas.reduce((a,ca)=>a+capM(ca),0);
+    if(dayCapM >= N - caSlack(N) - 1e-6) return;                  // ngày KHÔNG thiếu -> giữ nguyên 60/40
+    const strong = capM(cas[0])>=capM(cas[1])?cas[0]:cas[1], weak = strong===cas[0]?cas[1]:cas[0];
+    const cs=caStat[strong]; if(cs.capMain>cs.need){ cs.need=cs.capMain; cs.st='đủ'; cs.morePeople=0; cs.quota=cs.capMain; } // ca mạnh: chỉ tiêu = đúng sức nó (hết "dư")
+    const cw=caStat[weak]; cw.need=Math.max(cw.capMain, N-caStat[strong].need); // ca yếu gánh phần còn lại
+    cw.st = cw.capMain < cw.need - caSlack(cw.need) - 1e-6 ? 'thiếu':'đủ';
+    cw.morePeople = cw.st==='thiếu'? Math.max(1,Math.ceil((cw.need-cw.capMain)/onePersonCa)) : 0;
+  })();
   const chainDayCap=chCa('Sáng')+chCa('Chiều')+chCa('Tối');
   return {selected,crabSel,rest,caStat,ordersCap:dayCap(),chainCap:chainDayCap,crabCap,crabD,trainEff,
     crabShort:crabD>0&&crabCap<crabD-1e-6,
@@ -1874,7 +1877,8 @@ function renderWeekView(){
           const isBn=(cs.slowKeys||[]).includes(s.key); const tag=isBn?' <span class="bn-tag">🔴 nút thắt</span>':'';
           const ppl=cs.members.filter(p=>(cs.roles&&cs.roles[p.id]||[]).includes(s.key));
           if(!ppl.length)return head+`<tr><td>${esc(s.name)}${tag}</td><td colspan="2" style="color:var(--bad)">⛔ chưa có người</td></tr>`;
-          return head+`<tr><td>${esc(s.name)}${tag}</td><td>${ppl.map(p=>esc(p.name)+(trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':'')).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
+          const hrOf=p=>{const hh=(cs.assignH&&cs.assignH[p.id]&&cs.assignH[p.id][s.key])||0; return hh>=0.15?` <small class="hint">${hh.toFixed(1)}h</small>`:'';};
+          return head+`<tr><td>${esc(s.name)}${tag}</td><td>${ppl.map(p=>esc(p.name)+hrOf(p)+(trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':'')).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
         }).join('');
       }
       // C) DÒNG LUÂN CHUYỂN: khâu nhanh xong dồn sang 2 khâu nghẽn
@@ -1973,6 +1977,8 @@ function optBanner(ws){
   const st=SOLVER_STATE[ws]||{};
   if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — dùng cách thường, lịch vẫn hợp lệ. <small>(${esc(st.err||'')})</small></div>`;
   if(st.engine==='HiGHS') return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU bằng HiGHS</b> (${st.ms||0}ms) ✓ — tối ưu toàn cục. <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
+  if(useChain()){ // chế độ dây chuyền: HiGHS (tuyến tính) không mô phỏng được -> dùng bộ giải nội bộ, KHÔNG nhắc HiGHS
+    return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> — bộ giải nội bộ theo mô hình <b>dây chuyền</b> (ít người nhất, dồn người vào khâu nghẽn) ✓ <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`; }
   const note = st.highsErr ? `<br><small>ℹ️ HiGHS chưa nạp được (kết quả nội bộ tương đương): ${esc(st.highsErr)}</small>` : (S.config.useHighs!==false?` <small style="color:var(--muted)">· đang thử nâng cấp HiGHS…</small>`:'');
   return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> — bộ giải nội bộ (ít người nhất + phủ đủ khâu) ✓${note} <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
 }
