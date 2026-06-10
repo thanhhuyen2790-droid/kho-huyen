@@ -100,6 +100,8 @@
   .optbar.err{background:#fdecea;border:1px solid #f5c2bd;color:#b42318}
   .optbar.off{background:#f3f4f6;border:1px solid #e0e3e8;color:#555}
   .optbar.warn2{background:#fff7e6;border:1px solid #f3d27a;color:#8a5a00}
+  .day.today{box-shadow:0 0 0 3px var(--brand) inset}
+  .badge.b-today{background:var(--brand);color:#fff}
   .optbar a{font-weight:600}
   .slownote{margin-top:6px;background:#fff5e9;border:1px solid #f3d6ad;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#7a4a12}
   .caRest{margin-top:6px;background:#f6f6f8;border:1px dashed #d4d4dd;border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--muted)}
@@ -384,7 +386,7 @@
 
       <details><summary><b>5. Cách PHÂN BỔ người trong 1 ngày</b></summary>
         <div class="docbody">
-        <p>Đơn chia đều 2 ca: ca Sáng N/2, ca Chiều N/2. Thứ tự xếp:</p>
+        <p>Chỉ tiêu đơn chia <b>ca Sáng 60% · ca Chiều 40%</b> (chiều nhẹ hơn để dành thời gian dọn kho trước khi về). Cho phép <b>dao động ±3% (hoặc ≥5 đơn)/ca</b> — trong khoảng này KHÔNG thêm người (cố xử lý nốt thay vì thêm hẳn 1 người). Thứ tự xếp:</p>
         <ol>
           <li><b>Người làm full ngày vào trước</b> (làm nền cả 2 ca), thêm đến khi cả 2 ca đủ tải. Khi thêm, ưu tiên người <b>lấp được khâu đang hổng/yếu</b> của team.</li>
           <li><b>Bù từng ca</b> bằng người làm theo ca. Ca Chiều ưu tiên bù luôn khâu mà ca Sáng đang yếu (do bị "fix" người đăng ký).</li>
@@ -434,6 +436,10 @@
         <div><label class="fld">Số ca = 1 ngày làm đầy đủ</label><input id="cf-fd" type="number" onchange="saveAll();renderAll()"></div>
         <div><label class="fld">Hệ số trợ lực khi đào tạo (× chuẩn)</label><input id="cf-train" type="number" step="0.05" min="0" max="1" onchange="S.config.trainAssist=Math.max(0,Math.min(1,+this.value||0.35));saveAll();renderAll()"><small class="hint">Người được bổ sung vào khâu nút thắt (chưa thạo) phụ việc ~ % này của chuẩn</small></div>
       </div>
+      <div class="row" style="margin-top:8px">
+        <div><label class="fld">% chỉ tiêu ca Sáng (Chiều = phần còn lại)</label><input id="cf-amshare" type="number" step="5" min="10" max="90" onchange="S.config.amShare=Math.max(10,Math.min(90,+this.value||60));saveAll();renderAll()"><small class="hint">Mặc định 60% Sáng / 40% Chiều — chiều nhẹ hơn để dọn kho trước khi về</small></div>
+        <div><label class="fld">Dao động cho phép mỗi ca (%)</label><input id="cf-slack" type="number" step="1" min="0" max="20" onchange="S.config.caSlackPct=Math.max(0,Math.min(20,+this.value||3));saveAll();renderAll()"><small class="hint">Trong ±% này (hoặc ≥5 đơn) thì KHÔNG thêm người — cố xử lý nốt</small></div>
+      </div>
       <p class="note" style="margin-top:14px">Năng lực mỗi người ở từng khâu = <b>Tốc độ khâu × (điểm kỹ năng ÷ 10) × số giờ làm</b>. Mỗi đơn phải đi qua hết các khâu, nên <b>khâu chậm/yếu nhất là nút thắt</b>.</p>
     </div>
     <div class="card">
@@ -467,7 +473,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-9 (nội bộ + HiGHS)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-11 (chỉ tiêu 60/40 + dao động ±3%)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -496,7 +502,7 @@ function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>
 
 function defaultState(){
   return {
-    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35},
+    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -866,7 +872,7 @@ function dayPeople(ds){
   const rested=(S.restDays&&S.restDays[ds])||[];
   for(const sid in reg){ const st=S.staff.find(x=>x.id===sid); if(!st||!st.active)continue;
     if(rested.includes(sid))continue;
-    arr.push({id:sid,name:st.name,type:st.type,cas:reg[sid].length,caList:reg[sid].slice(),hours:reg[sid].length*S.config.caHours,skills:st.skills}); }
+    arr.push({id:sid,name:st.name,type:st.type,prod:st.prod,cas:reg[sid].length,caList:reg[sid].slice(),hours:reg[sid].length*S.config.caHours,skills:st.skills}); }
   return arr;
 }
 // độ phủ từng khâu khi team (mỗi người có .hours) chạy N đơn (maximin theo tốc độ đơn/h)
@@ -1176,6 +1182,11 @@ function weakestStage(cov){
 // ===== PHÂN BỔ THEO CA (đúng dây chuyền): mỗi ca MAN ĐỦ 7 khâu, dùng ÍT người nhất; khâu yếu -> năng lực tụt + cảnh báo (KHÔNG loại người) =====
 var SOLVER_PLAN={};   // {ds: {Sáng:[staffId...], Chiều:[...]}} — kết quả bộ tối ưu (HiGHS/GLPK). Rỗng = chạy greedy.
 var SOLVER_STATE={};  // {weekStart: {pending,done,engine,ms,err}} — trạng thái để hiển thị
+// ===== CHỈ TIÊU & DUNG SAI mỗi ca =====
+function amShare(){ return (S.config.amShare!=null?+S.config.amShare:60)/100; }              // tỉ lệ chỉ tiêu ca Sáng (mặc định 60%)
+function caTarget(N,ca){ if(ca==='Sáng')return N*amShare(); if(ca==='Chiều')return N*(1-amShare()); return 0; } // Sáng 60% · Chiều 40% · Tối 0
+function caSlack(t){ return Math.max(t*((S.config.caSlackPct!=null?+S.config.caSlackPct:3)/100), 5); }       // dao động cho phép: ±3% hoặc ≥5 đơn
+function caTargetMin(N,ca){ const t=caTarget(N,ca); return Math.max(0,t-caSlack(t)); }        // ngưỡng tối thiểu để coi là ĐỦ (khỏi thêm người)
 /* ===================== BỘ TỐI ƯU (MILP) — HiGHS chính, GLPK dự phòng ===================== */
 const OPT={
   W:{cap:1000, cov:100, ppl:10, fair:3, bal:1}, // trọng số gọn (ổn định số): đủ đơn >> phủ khâu >> ít người >> yếu≤giỏi >> chia đều
@@ -1194,9 +1205,9 @@ const OPT={
     const V=(name,lb,ub,int)=>{ if(seen[name])return name; seen[name]=1; vars.push({name,lb,ub:ub==null?1e9:ub,int:!!int}); return name; };
     const xn=(si,di,ca)=>`x_${si}_${di}_${ca}`;
     days.forEach((day,di)=>Object.keys(day.avail).forEach(si=>day.avail[si].forEach(ca=>V(xn(si,di,ca),0,1,true))));
-    // (1) năng lực mỗi ca >= nửa chỉ tiêu
+    // (1) năng lực mỗi ca >= chỉ tiêu ca (Sáng 60%/Chiều 40%, đã trừ dao động cho phép)
     days.forEach((day,di)=>['S','C'].forEach(ca=>{ const terms=[]; Object.keys(day.avail).forEach(si=>{ if(day.avail[si].includes(ca))terms.push([prodOf(+si)*H, xn(si,di,ca)]); });
-      if(!terms.length)return; const sc=V(`sCap_${di}_${ca}`,0,null,false); terms.push([1,sc]); cons.push({name:`cap_${di}_${ca}`,terms,op:'>=',rhs:day.orders/2}); obj.push([W.cap,sc]); }));
+      if(!terms.length)return; const sc=V(`sCap_${di}_${ca}`,0,null,false); terms.push([1,sc]); cons.push({name:`cap_${di}_${ca}`,terms,op:'>=',rhs:caTargetMin(day.orders,ca==='S'?'Sáng':'Chiều')}); obj.push([W.cap,sc]); }));
     // (2) phủ khâu: mỗi ca mỗi khâu có người biết -> >=1
     days.forEach((day,di)=>['S','C'].forEach(ca=>stages.forEach((st,ki)=>{ const cap=Object.keys(day.avail).filter(si=>day.avail[si].includes(ca)&&(staffArr[si].skills[st.key]||0)>0);
       if(!cap.length)return; const terms=cap.map(si=>[1,xn(si,di,ca)]); const sv=V(`sCov_${di}_${ca}_${ki}`,0,1,false); terms.push([1,sv]); cons.push({name:`cov_${di}_${ca}_${ki}`,terms,op:'>=',rhs:1}); obj.push([W.cov,sv]); })));
@@ -1251,10 +1262,10 @@ const OPT={
   solveLocal(weekStart){
     const H=S.config.caHours, stages=S.stages, slowKeys=stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key);
     const staffArr=S.staff.filter(s=>s.active); const acc={}; staffArr.forEach(s=>acc[s.id]=0);
-    this.weekDays(weekStart).forEach(d=>{ const ds=fmt(d), orders=ordersOn(d), reg=S.reg[ds]||{}, rested=(S.restDays&&S.restDays[ds])||[], half=orders/2;
+    this.weekDays(weekStart).forEach(d=>{ const ds=fmt(d), orders=ordersOn(d), reg=S.reg[ds]||{}, rested=(S.restDays&&S.restDays[ds])||[];
       const plan={'Sáng':[],'Chiều':[]};
       ['Sáng','Chiều'].forEach(ca=>{ const cand=staffArr.filter(s=>!rested.includes(s.id)&&(reg[s.id]||[]).includes(ca));
-        plan[ca]=this.minCover(cand, half, stages, slowKeys, H, acc); });
+        plan[ca]=this.minCover(cand, caTargetMin(orders,ca), stages, slowKeys, H, acc); }); // chỉ tiêu ca 60/40, trừ dao động cho phép
       const worked={}; ['Sáng','Chiều'].forEach(ca=>plan[ca].forEach(id=>worked[id]=(worked[id]||0)+1));
       Object.keys(worked).forEach(id=>acc[id]+=worked[id]);
       SOLVER_PLAN[ds]=plan; });
@@ -1284,7 +1295,8 @@ const OPT={
 };
 function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   trainMap=trainMap||{};
-  const caH=S.config.caHours, half=N/2;
+  const caH=S.config.caHours;
+  const tgt=ca=>caTarget(N,ca), tgtMin=ca=>caTargetMin(N,ca); // chỉ tiêu ca (Sáng 60%/Chiều 40%) + ngưỡng tối thiểu (đã trừ dao động)
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TRỌN GÓI đơn/h — lấy trực tiếp từ bảng Nhân sự
   const CAS=['Sáng','Chiều'];
   const onePersonCa=Math.max(1,(S.config.prod||20)*caH);
@@ -1298,7 +1310,7 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   const dayCap=()=>caCap('Sáng')+caCap('Chiều')+caCap('Tối');
   const workCount=p=>(inca('Sáng',p)?1:0)+(inca('Chiều',p)?1:0); // số ca đã xếp cho người này hôm nay
   const uncoveredIn=(ca,cand)=>S.stages.filter(s=>!pick[ca].some(p=>(p.skills[s.key]||0)>0)&&cand.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key);
-  const bnOf=ca=>{const t=caTeam(ca);return t.length?coverageOf(Math.max(1,half),t).bottleneck.key:(S.stages[0]&&S.stages[0].key);};
+  const bnOf=ca=>{const t=caTeam(ca);return t.length?coverageOf(Math.max(1,tgt(ca)),t).bottleneck.key:(S.stages[0]&&S.stages[0].key);};
   // chọn người tốt nhất cho 1 ca: FT trước → giỏi khâu đang cần (phủ nền) → ít ngày công & TRÁNH 1 PT cả 2 ca → trọn gói cao (giữ yếu ≤ giỏi)
   const bestFor=(ca,cand)=>{
     const uncov=uncoveredIn(ca,cand);
@@ -1318,9 +1330,9 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   } else {
     // ===== GREEDY (dự phòng khi chưa/không có solver) =====
     // (1) Mỗi ca: thêm người đến khi đủ NỬA chỉ tiêu (tối thiểu người/ca)
-    for(const ca of CAS){ let g=0; while(caCap(ca)<half-1e-6&&g++<300){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; pick[ca].push(bestFor(ca,cand)); } }
-    // (2) BÙ CHÉO: tổng ngày chưa đủ -> thêm vào ca còn người
-    let gx=0; while(dayCap()<N-1e-6&&gx++<300){ let added=false; for(const ca of CAS.slice().sort((a,b)=>caCap(a)-caCap(b))){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; pick[ca].push(bestFor(ca,cand)); added=true; break; } if(!added)break; }
+    for(const ca of CAS){ let g=0; while(caCap(ca)<tgtMin(ca)-1e-6&&g++<300){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; pick[ca].push(bestFor(ca,cand)); } }
+    // (2) BÙ CHÉO: tổng ngày chưa đủ -> thêm vào ca còn người (cho phép dao động cả ngày)
+    let gx=0; while(dayCap()<N-caSlack(N)-1e-6&&gx++<300){ let added=false; for(const ca of CAS.slice().sort((a,b)=>caCap(a)-caCap(b))){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; pick[ca].push(bestFor(ca,cand)); added=true; break; } if(!added)break; }
     // (3) MAN ĐỦ KHÂU mỗi ca
     for(const ca of CAS){ let g=0; while(g++<40){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; if(!uncoveredIn(ca,cand).length)break; pick[ca].push(bestFor(ca,cand)); } }
   }
@@ -1328,21 +1340,26 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   Object.keys(trainMap).forEach(sid=>{ const p=pool.find(x=>x.id===sid); if(p)CAS.forEach(ca=>{ if(p.caList.includes(ca)&&!inca(ca,p))pick[ca].push(p); }); });
   if(!forcedPick){
     // (4) DỒN/LÓT khâu nút thắt (chỉ greedy): ngày THIẾU/ĐÔNG còn khâu yếu -> giỏi trước, hết thì lót
-    let g2=0; while(g2++<400){ let acted=false; for(const ca of CAS){ const team=caTeam(ca); if(!team.length)continue; const cov=coverageOf(Math.max(1,half),team); const capShort=caCap(ca)<half-1e-6; const stageWeak=busy&&!cov.fully; if(!capShort&&!stageWeak)continue; const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; const bn=cov.bottleneck.key; const p=cand.slice().sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||((acc[a.id]||0)-(acc[b.id]||0))||(pr(b)-pr(a)))[0]; pick[ca].push(p); if((p.skills[bn]||0)<benchmark(bn)*(S.config.trainAssist||0.35))trainEff[p.id]=bn; acted=true; } if(!acted)break; }
+    let g2=0; while(g2++<400){ let acted=false; for(const ca of CAS){ const team=caTeam(ca); if(!team.length)continue; const cov=coverageOf(Math.max(1,tgt(ca)),team); const capShort=caCap(ca)<tgtMin(ca)-1e-6; const stageWeak=busy&&!cov.fully; if(!capShort&&!stageWeak)continue; const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; const bn=cov.bottleneck.key; const p=cand.slice().sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||((acc[a.id]||0)-(acc[b.id]||0))||(pr(b)-pr(a)))[0]; pick[ca].push(p); if((p.skills[bn]||0)<benchmark(bn)*(S.config.trainAssist||0.35))trainEff[p.id]=bn; acted=true; } if(!acted)break; }
   }
   // gom SELECTED (union các ca), gắn pca = ca thực làm + cas = số ca thực làm
   const byId={}; CAS.forEach(ca=>pick[ca].forEach(p=>{ if(!byId[p.id])byId[p.id]={...p,pca:[]}; if(!byId[p.id].pca.includes(ca))byId[p.id].pca.push(ca); }));
   const selected=Object.values(byId); selected.forEach(p=>p.cas=p.pca.length);
   const inSelAny=new Set(selected.map(p=>p.id));
-  // (5) CRAB từ người HOÀN TOÀN chưa chạy đơn: trọn gói CAO trước -> FT trước -> ít ngày công (xoay vòng theo công)
-  const perCa=(S.config.crabRate||30)/2;
-  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || (pr(b)-pr(a)); // CÂN BẰNG: ai ít ngày công nhất làm crab -> cân tổng ngày công, tránh dồn người yếu
-  const crabSel=[]; let crabCap=0;
-  pool.filter(p=>!inSelAny.has(p.id)).sort(fairCrab).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSelAny.add(p.id);crabCap+=p.caList.length*perCa;p.cas=p.caList.length;} });
-  const rest=pool.filter(p=>!inSelAny.has(p.id));
-  // QUOTA linh hoạt: mỗi ca N/2; ca khoẻ làm nhanh hơn -> ĐẨY chỉ tiêu lên gánh bù ca yếu
+  // (5) CRAB — theo TỪNG CA: mỗi ca chỉ cần đủ người cho (crabD/2) SKU (1 người = 15 SKU/ca). Lấy người DƯ, cân bằng ngày công.
+  const perCa=(S.config.crabRate||30)/2;        // SKU 1 người làm trong 1 ca
+  const crabPerCa = crabD>0 ? crabD/2 : 0;       // SKU cần mỗi ca
+  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || (pr(b)-pr(a));
+  const crabByCa={'Sáng':[],'Chiều':[]}; const crabIds=new Set(); let crabCap=0;
+  CAS.forEach(ca=>{ if(crabPerCa<=0)return; let cap=0;
+    const cand=pool.filter(p=>p.caList.includes(ca)&&!inSelAny.has(p.id)).sort(fairCrab);
+    for(const p of cand){ if(cap>=crabPerCa-1e-6)break; crabByCa[ca].push(p); crabIds.add(p.id); cap+=perCa; crabCap+=perCa; } });
+  const crabSel=pool.filter(p=>crabIds.has(p.id));
+  crabSel.forEach(p=>{ p.crabCa=CAS.filter(ca=>crabByCa[ca].some(x=>x.id===p.id)); p.cas=p.crabCa.length; });
+  const rest=pool.filter(p=>!inSelAny.has(p.id)&&!crabIds.has(p.id));
+  // QUOTA linh hoạt: ca Sáng 60% · Chiều 40%; ca khoẻ làm nhanh hơn -> ĐẨY chỉ tiêu lên gánh bù ca yếu
   const capS=caCap('Sáng'), capCT=caCap('Chiều')+caCap('Tối');
-  let qS=Math.min(capS,half), qC=Math.min(capCT,half), remN=N-qS-qC;
+  let qS=Math.min(capS,tgt('Sáng')), qC=Math.min(capCT,tgt('Chiều')), remN=N-qS-qC;
   if(remN>1e-6){const a=Math.min(remN,capS-qS);qS+=a;remN-=a;}
   if(remN>1e-6){const a=Math.min(remN,capCT-qC);qC+=a;remN-=a;}
   // báo cáo từng ca (assign = phân vị trí thực tế để hiển thị; mọi khâu có việc đều có người)
@@ -1350,17 +1367,17 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   ['Sáng','Chiều','Tối'].forEach(ca=>{
     const members=selected.filter(p=>p.pca&&p.pca.includes(ca));
     const c=caCap(ca);
-    const need=ca==='Tối'?0:half;
+    const need=caTarget(N,ca);        // chỉ tiêu ca: Sáng 60% · Chiều 40%
     const quota=ca==='Sáng'?qS:(ca==='Chiều'?qC:0);
     let st;
     if(ca==='Tối')st=members.length?'support':'none';
-    else if(c<half-1e-6)st='thiếu';   // năng lực ca < chỉ tiêu N/2
+    else if(c<tgtMin(ca)-1e-6)st='thiếu';   // năng lực ca < chỉ tiêu (đã trừ dao động cho phép)
     else st='đủ';
-    const crabHere=crabSel.filter(p=>p.caList.includes(ca));
+    const crabHere=(ca==='Tối')?[]:(crabByCa[ca]||[]);
     let weak=[], roles={}, assignH={}, gap=[], bnKey=null, slowKeys=[], slowConflict=[], slowReco=null;
     if(ca!=='Tối'&&members.length&&N>0){
       const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)}));
-      const covCa=coverageOf(Math.max(1,half), mm);
+      const covCa=coverageOf(Math.max(1,tgt(ca)), mm);
       gap=covCa.skillGap; bnKey=covCa.bottleneck.key;
       S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(covCa.skillGap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
       slowKeys=S.stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu CHẬM nhất (nút thắt) — vd Gói hộp, Bọc xóc
@@ -1386,7 +1403,7 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
       slowReco={key:slowBn, staff:slowStaff, isBn:bnKey===slowBn};
     }
     caStat[ca]={members,cap:c,need,quota,st,crab:crabHere,weak,roles,assignH,gap,bnKey,slowKeys,slowConflict,slowReco,
-      morePeople: st==='thiếu'? Math.max(1,Math.ceil((half-c)/onePersonCa)) : 0};
+      morePeople: st==='thiếu'? Math.max(1,Math.ceil((tgt(ca)-c)/onePersonCa)) : 0};
   });
   return {selected,crabSel,rest,caStat,ordersCap:dayCap(),crabCap,crabD,trainEff,
     crabShort:crabD>0&&crabCap<crabD-1e-6,
@@ -1406,7 +1423,7 @@ function planDay(d, acc){
   const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
   const sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
   const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:(p.pca?p.pca.length:p.caList.length)*S.config.caHours}))); // nhận xét kỹ năng cấp ngày (theo ca thực làm)
-  const ordShort=sd.ordersCap<orders-1e-6;
+  const ordShort=sd.ordersCap<orders-caSlack(orders)-1e-6; // cho phép dao động ±3% (hoặc ≥5 đơn) — trong khoảng này coi như ĐỦ
   const ordStatus=ordShort?'short_people':(!cov.fully?'short_skill':'ok');
   const leftoverH=sd.rest.reduce((a,p)=>a+p.hours,0);
   let kind;
@@ -1683,7 +1700,7 @@ function renderWeekView(){
     const trainMap=(r.sd&&r.sd.trainEff)||{};
     const reg=S.reg[r.ds]||{};
     const restedIds=(S.restDays&&S.restDays[r.ds])||[];
-    const dayMet = r.type!=='closed' && r.ord.capacity>=r.orders-1e-6 && !r.crab.short; // ngày đã ĐỦ -> mới cho nghỉ người dư
+    const dayMet = r.type!=='closed' && r.ord.capacity>=r.orders-caSlack(r.orders)-1e-6 && !r.crab.short; // ngày đã ĐỦ (trong dao động) -> mới cho nghỉ người dư
     const restChk=(id,name,on)=>`<label class="restchk ${on?'on':''}"><input type="checkbox" ${on?'checked':''} onchange="toggleRest('${r.ds}','${id}',this.checked)">${esc(name)}${on?' ✓nghỉ':''}</label>`;
     const caSection = r.type!=='closed'&&r.caStat ? ['Sáng','Chiều','Tối'].map(ca=>{
       const cs=r.caStat[ca]; if(!cs)return '';
@@ -1691,8 +1708,8 @@ function renderWeekView(){
       const icon=ca==='Sáng'?'☀️':ca==='Chiều'?'🌤️':'🌙';
       const b=cs.st==='thiếu'?['b-bad','THIẾU +'+cs.morePeople]:cs.st==='bù'?['b-mid','ĐẨY BÙ']:cs.st==='đủ'?['b-ok','ĐẠT']:['b-normal','HỖ TRỢ'];
       const header=`<div class="caHead">${icon} <b>CA ${ca.toUpperCase()}</b> — ${cs.members.length+cs.crab.length} người <span class="badge ${b[0]}">${b[1]}</span></div>`;
-      const cap=Math.round(cs.cap), tgt=Math.round(cs.need), diff=cap-tgt; // chỉ tiêu mỗi ca = N/2
-      const verdict = ca==='Tối'?'' : (diff>=0?`<span style="color:var(--ok);font-weight:700">ĐẠT${diff>0?' (dư '+diff+')':''}</span>`:`<span style="color:var(--bad);font-weight:700">THIẾU ${-diff} đơn</span>`);
+      const cap=Math.round(cs.cap), tgt=Math.round(cs.need), diff=cap-tgt, slk=Math.round(caSlack(cs.need)); // chỉ tiêu ca: Sáng 60% · Chiều 40%
+      const verdict = ca==='Tối'?'' : (diff>=-slk?`<span style="color:var(--ok);font-weight:700">ĐẠT${diff>0?' (dư '+diff+')':''}</span>`:`<span style="color:var(--bad);font-weight:700">THIẾU ${-diff} đơn</span>`);
       const perf= ca!=='Tối'
         ? `<div class="metric"><b>Năng lực ${cap}</b> / Chỉ tiêu <b>${tgt}</b> đơn → ${verdict}${cs.quota>cs.need+1?` <span class="pill" style="color:#6a45d6">gánh bù ca kia +${Math.round(cs.quota-cs.need)}</span>`:''}</div>`
         : `<div class="metric">Hỗ trợ thêm ~${cap} đơn</div>`;
@@ -1741,11 +1758,12 @@ function renderWeekView(){
           <span class="stpct">${Math.round(rt)}<small style="color:var(--muted);font-weight:400"> ·${c}%${warn}</small></span>
         </div>`;
       }).join('')}</div>` : '';
-    return `<div class="day ${r.status}">
-      <div class="dh"><b>${DOW[i]}</b><span class="badge ${tb[0]}">${tb[1]}</span></div>
+    const isToday = fmt(r.d)===fmt(new Date());
+    return `<div class="day ${r.status}${isToday?' today':''}">
+      <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
-      <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Cần ≈ <b>${r.reqPeople}</b> · Chạy đơn <b>${r.ord.selected.length}</b> · đăng ký <b>${totalReg}</b></div>
-      ${r.type!=='closed'?`<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực <b style="color:${r.ord.capacity>=r.orders-1e-6?'var(--ok)':'var(--bad)'}">${Math.round(r.ord.capacity)}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${r.ord.capacity>=r.orders-1e-6?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-r.ord.capacity)+'</span>'}</div>`:''}
+      <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${r.ord.selected.length}</b> người · đăng ký <b>${totalReg}</b></div>
+      ${r.type!=='closed'?(()=>{const met=r.ord.capacity>=r.orders-caSlack(r.orders)-1e-6;return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực <b style="color:${met?'var(--ok)':'var(--bad)'}">${Math.round(r.ord.capacity)}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-r.ord.capacity)+'</span>'}</div>`;})():''}
       ${caSection}
       ${stagesHtml}
       ${crabWarn}
@@ -1772,7 +1790,7 @@ function optHash(ws){ const days=datesOfWeek(ws).map(fmt);
   const rest=days.map(ds=>JSON.stringify((S.restDays||{})[ds]||[])).join('|');
   const staff=S.staff.filter(s=>s.active).map(s=>s.id+s.prod+s.type+JSON.stringify(s.skills)).join('|');
   const dem=JSON.stringify(S.demand.base)+S.demand.month+JSON.stringify(S.demand.mult)+S.demand.midDates+S.demand.peakDates+S.demand.closedDates;
-  return _hashStr(reg+rest+staff+dem+S.config.caHours+S.config.prod); }
+  return _hashStr(reg+rest+staff+dem+S.config.caHours+S.config.prod+'|'+S.config.amShare+'|'+S.config.caSlackPct+'|'+S.config.crabRate); }
 // Bộ giải NỘI BỘ (đồng bộ): luôn lấp SOLVER_PLAN tức thì; nếu HiGHS đã giải đúng dữ liệu này thì giữ nguyên
 function ensurePlan(ws){
   if(S.config.useOptimizer===false){ datesOfWeek(ws).forEach(d=>delete SOLVER_PLAN[fmt(d)]); SOLVER_STATE[ws]={off:true}; return; }
@@ -1838,6 +1856,8 @@ function renderAll(){
   document.getElementById('cf-cah').value=S.config.caHours;
   document.getElementById('cf-fd').value=S.config.fullDay;
   const ct=document.getElementById('cf-train'); if(ct)ct.value=S.config.trainAssist!=null?S.config.trainAssist:0.35;
+  const cam=document.getElementById('cf-amshare'); if(cam)cam.value=S.config.amShare!=null?S.config.amShare:60;
+  const csl=document.getElementById('cf-slack'); if(csl)csl.value=S.config.caSlackPct!=null?S.config.caSlackPct:3;
   fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();
   populateUserStaff();renderReg();updateNavBadge();
 }
