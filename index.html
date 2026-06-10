@@ -498,7 +498,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-23 (số đơn mỗi người + thời gian hoàn thành ca)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-24 (đồng bộ chỉ tiêu bảng lịch & bảng phân bổ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1064,7 +1064,7 @@ function renderWeekSchedule(){
   let html='<table class="schedtbl" style="min-width:960px"><thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff;min-width:120px;z-index:2">Công đoạn / Ca</th>';
   result.forEach((r,i)=>{
     const tieu = r.type==='closed' ? 'Kho nghỉ'
-      : `☀️ ${Math.round(r.caStat['Sáng'].quota)} · 🌤️ ${Math.round(r.caStat['Chiều'].quota)} đơn${r.crabD>0?`<br>🦀 ${Math.round(r.crabD)} SKU`:''}`;
+      : `☀️ ${Math.round(r.caStat['Sáng'].need)} · 🌤️ ${Math.round(r.caStat['Chiều'].need)} đơn${r.crabD>0?`<br>🦀 ${Math.round(r.crabD)} SKU`:''}`;  // CHỈ TIÊU = need (đồng bộ với bảng phân bổ)
     html+=`<th>${DOW2[i]}<br><b>${r.d.getDate()}/${r.d.getMonth()+1}</b><br><span class="pill">${tieu}</span></th>`;
   });
   html+='</tr></thead><tbody>';
