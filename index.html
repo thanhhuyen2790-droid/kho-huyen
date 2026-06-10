@@ -99,6 +99,7 @@
   .optbar.ok{background:#e7f7f0;border:1px solid #b7e4ce;color:#0a7a4f}
   .optbar.err{background:#fdecea;border:1px solid #f5c2bd;color:#b42318}
   .optbar.off{background:#f3f4f6;border:1px solid #e0e3e8;color:#555}
+  .optbar.warn2{background:#fff7e6;border:1px solid #f3d27a;color:#8a5a00}
   .optbar a{font-weight:600}
   .slownote{margin-top:6px;background:#fff5e9;border:1px solid #f3d6ad;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#7a4a12}
   .caRest{margin-top:6px;background:#f6f6f8;border:1px dashed #d4d4dd;border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--muted)}
@@ -1177,7 +1178,7 @@ var SOLVER_PLAN={};   // {ds: {Sáng:[staffId...], Chiều:[...]}} — kết qu�
 var SOLVER_STATE={};  // {weekStart: {pending,done,engine,ms,err}} — trạng thái để hiển thị
 /* ===================== BỘ TỐI ƯU (MILP) — HiGHS chính, GLPK dự phòng ===================== */
 const OPT={
-  W:{cap:1e7, cov:1e5, ppl:200, fair:30, bal:5}, // trọng số: đủ đơn >> phủ khâu >> ít người >> yếu≤giỏi >> chia đều
+  W:{cap:1000, cov:100, ppl:10, fair:3, bal:1}, // trọng số gọn (ổn định số): đủ đơn >> phủ khâu >> ít người >> yếu≤giỏi >> chia đều
   weekDays(weekStart){ return datesOfWeek(weekStart).filter(d=>dayType(d)!=='closed'); },
   // Dựng mô hình MILP cho 1 tuần
   buildModel(weekStart){
@@ -1230,14 +1231,18 @@ const OPT={
   apply(m,getVal){ m.days.forEach((day,di)=>{ const plan={'Sáng':[],'Chiều':[]};
     Object.keys(day.avail).forEach(si=>day.avail[si].forEach(ca=>{ if((getVal(`x_${si}_${di}_${ca}`)||0)>0.5){ (ca==='S'?plan['Sáng']:plan['Chiều']).push(m.staffArr[si].id); } }));
     SOLVER_PLAN[day.ds]=plan; }); },
-  /* ---- nạp HiGHS (chính) ---- */
+  /* ---- nạp HiGHS (chính) — thử nhiều cách, gom lỗi để báo ---- */
   async loadHighs(){ if(window.__HIGHS)return window.__HIGHS;
-    const BASE='https://cdn.jsdelivr.net/npm/highs@1.2.2/build/';
-    let factory=null;
-    try{ const mod=await import('https://cdn.jsdelivr.net/npm/highs@1.2.2/+esm'); factory=mod.default||mod.highs||mod; }catch(e){ /* thử cách 2 */ }
-    if(typeof factory!=='function'){ await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=BASE+'highs.js'; sc.onload=res; sc.onerror=()=>rej(new Error('không tải được highs.js (CDN/chặn mạng)')); document.head.appendChild(sc); });
-      factory=window.Module||window.highs||window.Highs||window.createHighsModule; }
-    if(typeof factory!=='function')throw new Error('không tìm thấy hàm khởi tạo HiGHS sau khi tải');
+    const BASE='https://cdn.jsdelivr.net/npm/highs@1.2.2/build/'; const tries=[]; let factory=null;
+    const okFn=f=>typeof f==='function';
+    try{ const m=await import('https://cdn.jsdelivr.net/npm/highs@1.2.2/+esm'); factory=m.default||m.highs||(okFn(m)?m:null); if(!okFn(factory))throw new Error('export không phải hàm'); }
+    catch(e){ tries.push('esm@jsdelivr: '+(e&&e.message||e)); factory=null; }
+    if(!okFn(factory)){ try{ const m=await import('https://esm.sh/highs@1.2.2'); factory=m.default||m.highs||(okFn(m)?m:null); if(!okFn(factory))throw new Error('export không phải hàm'); }
+      catch(e){ tries.push('esm.sh: '+(e&&e.message||e)); factory=null; } }
+    if(!okFn(factory)){ try{ await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=BASE+'highs.js'; sc.onload=res; sc.onerror=()=>rej(new Error('không tải được file')); document.head.appendChild(sc); });
+        factory=window.Module||window.highs||window.Highs||window.createHighsModule||window.HiGHS; if(!okFn(factory))throw new Error('tải xong nhưng không thấy hàm khởi tạo (global)'); }
+      catch(e){ tries.push('script: '+(e&&e.message||e)); factory=null; } }
+    if(!okFn(factory)) throw new Error('không nạp được HiGHS ['+tries.join(' || ')+']');
     const highs=await factory({locateFile:f=>BASE+f}); window.__HIGHS=highs; return highs; },
   /* ---- nạp GLPK (dự phòng) ---- */
   async loadGLPK(){ if(window.__GLPK)return window.__GLPK;
@@ -1254,7 +1259,7 @@ const OPT={
       // 2) GLPK
       try{ const glpk=await this.loadGLPK(); const prob=this.toGLPK(m,glpk); const r=await glpk.solve(prob,glpk.GLP_MSG_OFF);
         const vars=(r&&r.result&&r.result.vars)||{}; this.apply(m,n=>vars[n]||0);
-        this.last={engine:'GLPK',ms:Date.now()-t0}; return true;
+        this.last={engine:'GLPK',ms:Date.now()-t0, warnH:this.lastErrH}; return true;
       }catch(eG){ this.lastErrG=String(eG&&eG.message||eG); throw new Error('HiGHS lỗi ('+this.lastErrH+') · GLPK lỗi ('+this.lastErrG+')'); } }
   }
 };
@@ -1745,7 +1750,9 @@ function optBanner(ws){
   if(S.config.useOptimizer===false) return `<div class="optbar off">🧠 Bộ tối ưu: <b>ĐANG TẮT</b> (đang dùng cách thường). <a href="#" onclick="S.config.useOptimizer=true;SOLVER_STATE={};SOLVER_PLAN={};saveAll();renderPlan();return false">Bật lại</a></div>`;
   const st=SOLVER_STATE[ws]||{};
   if(st.pending) return `<div class="optbar run">🧠 <b>Đang tối ưu lịch…</b> (giải bài MILP bằng HiGHS). Chờ vài giây…</div>`;
-  if(st.done) return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> bằng <b>${esc(st.engine||'?')}</b> (${st.ms||0}ms) ✓ <a href="#" onclick="SOLVER_STATE={};SOLVER_PLAN={};renderPlan();return false">tối ưu lại</a> · <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
+  if(st.done){ const slow=st.engine==='GLPK';
+    const warn = st.warnH ? `<br><small style="color:#b42318">⚠️ HiGHS không nạp được nên dùng ${slow?'GLPK (chậm hơn)':'dự phòng'}. Chi tiết để gửi tôi: ${esc(st.warnH)}</small>` : '';
+    return `<div class="optbar ${st.warnH?'warn2':'ok'}">🧠 Lịch đã <b>TỐI ƯU</b> bằng <b>${esc(st.engine||'?')}</b> (${st.ms||0}ms) ✓ <a href="#" onclick="SOLVER_STATE={};SOLVER_PLAN={};renderPlan();return false">tối ưu lại</a> · <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a>${warn}</div>`; }
   if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — đang tạm dùng cách thường (greedy), lịch vẫn hợp lệ. <a href="#" onclick="SOLVER_STATE={};renderPlan();return false">thử lại</a><br><small>Lỗi: ${esc(st.err||'')}</small><br><small>👉 Bạn mở <b>F12 → Console</b> chụp màn hình gửi tôi để sửa.</small></div>`;
   return `<div class="optbar run">🧠 Chuẩn bị tối ưu…</div>`;
 }
@@ -1764,7 +1771,7 @@ function maybeOptimize(ws){
   if(st&&st.hash===h&&(st.done||st.failed)) return; // chưa đổi dữ liệu -> giữ kết quả
   if(_optBusy) return; _optBusy=true;
   SOLVER_STATE[ws]={pending:true,hash:h};
-  setTimeout(()=>{ OPT.solveWeek(ws).then(()=>{ SOLVER_STATE[ws]={done:true,hash:h, engine:OPT.last&&OPT.last.engine, ms:OPT.last&&OPT.last.ms}; _optBusy=false; if(curTab==='plan')renderPlan(); })
+  setTimeout(()=>{ OPT.solveWeek(ws).then(()=>{ SOLVER_STATE[ws]={done:true,hash:h, engine:OPT.last&&OPT.last.engine, ms:OPT.last&&OPT.last.ms, warnH:OPT.last&&OPT.last.warnH}; _optBusy=false; if(curTab==='plan')renderPlan(); })
     .catch(e=>{ SOLVER_STATE[ws]={failed:true,hash:h, err:String(e&&e.message||e)}; _optBusy=false; if(curTab==='plan')renderPlan(); }); }, 50);
 }
 
