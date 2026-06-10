@@ -94,6 +94,12 @@
   .catbl td:last-child{white-space:nowrap}
   .reinf{margin-top:6px;background:#eef3ff;border:1px solid #cdd9f5;border-radius:8px;padding:6px 8px;font-size:11.5px}
   .reinf>div{margin-top:3px;display:flex;flex-wrap:wrap;gap:2px}
+  .optbar{grid-column:1/-1;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:4px}
+  .optbar.run{background:#eef4ff;border:1px solid #bcd3f5;color:#1d4ed8}
+  .optbar.ok{background:#e7f7f0;border:1px solid #b7e4ce;color:#0a7a4f}
+  .optbar.err{background:#fdecea;border:1px solid #f5c2bd;color:#b42318}
+  .optbar.off{background:#f3f4f6;border:1px solid #e0e3e8;color:#555}
+  .optbar a{font-weight:600}
   .slownote{margin-top:6px;background:#fff5e9;border:1px solid #f3d6ad;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#7a4a12}
   .caRest{margin-top:6px;background:#f6f6f8;border:1px dashed #d4d4dd;border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--muted)}
   .caSec{border-top:2px solid var(--line);margin-top:9px;padding-top:7px}
@@ -460,7 +466,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.09-6 (phủ chắc mọi khâu)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-7 (tối ưu HiGHS/GLPK)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1167,7 +1173,92 @@ function weakestStage(cov){
   return pool.reduce((m,s)=>(cov.coverage[s.key]||0)<(cov.coverage[m.key]||0)?s:m, pool[0]); // nút thắt thật = độ phủ thấp nhất
 }
 // ===== PHÂN BỔ THEO CA (đúng dây chuyền): mỗi ca MAN ĐỦ 7 khâu, dùng ÍT người nhất; khâu yếu -> năng lực tụt + cảnh báo (KHÔNG loại người) =====
-function selectDay(N, crabD, pool, acc, trainMap, busy){
+var SOLVER_PLAN={};   // {ds: {Sáng:[staffId...], Chiều:[...]}} — kết quả bộ tối ưu (HiGHS/GLPK). Rỗng = chạy greedy.
+var SOLVER_STATE={};  // {weekStart: {pending,done,engine,ms,err}} — trạng thái để hiển thị
+/* ===================== BỘ TỐI ƯU (MILP) — HiGHS chính, GLPK dự phòng ===================== */
+const OPT={
+  W:{cap:1e7, cov:1e5, ppl:200, fair:30, bal:5}, // trọng số: đủ đơn >> phủ khâu >> ít người >> yếu≤giỏi >> chia đều
+  weekDays(weekStart){ return datesOfWeek(weekStart).filter(d=>dayType(d)!=='closed'); },
+  // Dựng mô hình MILP cho 1 tuần
+  buildModel(weekStart){
+    const H=S.config.caHours, W=this.W;
+    const stages=S.stages, slowKeys=stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key);
+    const staffArr=S.staff.filter(s=>s.active);
+    const idOf=si=>staffArr[si].id, prodOf=si=>Math.max(0,(staffArr[si].prod>0?+staffArr[si].prod:(S.config.prod||20)));
+    const dates=this.weekDays(weekStart), days=[];
+    dates.forEach(d=>{ const ds=fmt(d), reg=S.reg[ds]||{}, rested=(S.restDays&&S.restDays[ds])||[]; const avail={};
+      staffArr.forEach((s,si)=>{ if(rested.includes(s.id))return; const cas=reg[s.id]; if(cas&&cas.length)avail[si]=cas.map(c=>c==='Sáng'?'S':'C'); });
+      days.push({ds, orders:ordersOn(d), avail}); });
+    const vars=[], cons=[], obj=[]; const seen={};
+    const V=(name,lb,ub,int)=>{ if(seen[name])return name; seen[name]=1; vars.push({name,lb,ub:ub==null?1e9:ub,int:!!int}); return name; };
+    const xn=(si,di,ca)=>`x_${si}_${di}_${ca}`;
+    days.forEach((day,di)=>Object.keys(day.avail).forEach(si=>day.avail[si].forEach(ca=>V(xn(si,di,ca),0,1,true))));
+    // (1) năng lực mỗi ca >= nửa chỉ tiêu
+    days.forEach((day,di)=>['S','C'].forEach(ca=>{ const terms=[]; Object.keys(day.avail).forEach(si=>{ if(day.avail[si].includes(ca))terms.push([prodOf(+si)*H, xn(si,di,ca)]); });
+      if(!terms.length)return; const sc=V(`sCap_${di}_${ca}`,0,null,false); terms.push([1,sc]); cons.push({name:`cap_${di}_${ca}`,terms,op:'>=',rhs:day.orders/2}); obj.push([W.cap,sc]); }));
+    // (2) phủ khâu: mỗi ca mỗi khâu có người biết -> >=1
+    days.forEach((day,di)=>['S','C'].forEach(ca=>stages.forEach((st,ki)=>{ const cap=Object.keys(day.avail).filter(si=>day.avail[si].includes(ca)&&(staffArr[si].skills[st.key]||0)>0);
+      if(!cap.length)return; const terms=cap.map(si=>[1,xn(si,di,ca)]); const sv=V(`sCov_${di}_${ca}_${ki}`,0,1,false); terms.push([1,sv]); cons.push({name:`cov_${di}_${ca}_${ki}`,terms,op:'>=',rhs:1}); obj.push([W.cov,sv]); })));
+    // (2b) 2 khâu nghẽn cần >=2 người (để tách)
+    days.forEach((day,di)=>['S','C'].forEach(ca=>{ const cap=Object.keys(day.avail).filter(si=>day.avail[si].includes(ca)&&slowKeys.some(k=>(staffArr[si].skills[k]||0)>0)); if(cap.length<2)return;
+      const terms=cap.map(si=>[1,xn(si,di,ca)]); const sv=V(`s2bn_${di}_${ca}`,0,2,false); terms.push([1,sv]); cons.push({name:`twobn_${di}_${ca}`,terms,op:'>=',rhs:2}); obj.push([W.cov*0.5,sv]); }));
+    // (3) w[si] = tổng ca làm + (2c) phạt MIN người
+    staffArr.forEach((s,si)=>{ const wn=V(`w_${si}`,0,null,true); const terms=[[1,wn]];
+      days.forEach((day,di)=>{ if(day.avail[si])day.avail[si].forEach(ca=>{ terms.push([-1,xn(si,di,ca)]); obj.push([W.ppl,xn(si,di,ca)]); }); });
+      cons.push({name:`wdef_${si}`,terms,op:'=',rhs:0}); });
+    // (4) yếu <= giỏi: cặp PT prod[p]<prod[q]
+    staffArr.forEach((p,pi)=>{ if(p.type!=='PT')return; staffArr.forEach((q,qi)=>{ if(q.type!=='PT')return; if((p.prod||0)<(q.prod||0)){
+      const v=V(`vlt_${pi}_${qi}`,0,null,false); cons.push({name:`fair_${pi}_${qi}`,terms:[[1,v],[-1,`w_${pi}`],[1,`w_${qi}`]],op:'>=',rhs:0}); obj.push([W.fair,v]); } }); });
+    // (5) chia đều PT: wmax - wmin
+    const PTi=staffArr.map((s,i)=>s.type==='PT'?i:-1).filter(i=>i>=0);
+    if(PTi.length){ V('wmax',0,null,false); V('wmin',0,null,false); PTi.forEach(i=>{ cons.push({name:`mx_${i}`,terms:[[1,'wmax'],[-1,`w_${i}`]],op:'>=',rhs:0}); cons.push({name:`mn_${i}`,terms:[[1,`w_${i}`],[-1,'wmin']],op:'>=',rhs:0}); }); obj.push([W.bal,'wmax']); obj.push([-W.bal,'wmin']); }
+    return {vars,cons,obj,days,staffArr};
+  },
+  toLP(m){ const comb=t=>{const mp={};t.forEach(([c,v])=>mp[v]=(mp[v]||0)+c);return Object.entries(mp).filter(([,c])=>Math.abs(c)>1e-12);};
+    const fmtp=p=>p.map(([v,c])=>`${c>=0?'+':'-'} ${Math.abs(c)} ${v}`).join(' ')||'0 zZ';
+    let s='Minimize\n obj: '+fmtp(comb(m.obj))+'\nSubject To\n';
+    m.cons.forEach(c=>{ s+=` ${c.name}: ${fmtp(comb(c.terms))} ${c.op} ${c.rhs}\n`; });
+    s+='Bounds\n'; m.vars.forEach(v=>{ if(v.int&&v.ub<=1)return; s+=` ${v.lb} <= ${v.name} <= ${v.ub>=1e8?'+inf':v.ub}\n`; });
+    const gens=m.vars.filter(v=>v.int&&v.ub>1).map(v=>v.name), bins=m.vars.filter(v=>v.int&&v.ub<=1).map(v=>v.name);
+    if(gens.length)s+='General\n '+gens.join(' ')+'\n'; if(bins.length)s+='Binary\n '+bins.join(' ')+'\n'; s+='End\n'; return s; },
+  toGLPK(m,glpk){ const comb=t=>{const mp={};t.forEach(([c,v])=>mp[v]=(mp[v]||0)+c);return Object.entries(mp).map(([name,coef])=>({name,coef}));};
+    const opm={'>=':glpk.GLP_LO,'<=':glpk.GLP_UP,'=':glpk.GLP_FX};
+    return {name:'sched',objective:{direction:glpk.GLP_MIN,name:'obj',vars:comb(m.obj)},
+      subjectTo:m.cons.map(c=>({name:c.name,vars:comb(c.terms),bnds:{type:opm[c.op],lb:c.rhs,ub:c.rhs}})),
+      binaries:m.vars.filter(v=>v.int&&v.ub<=1).map(v=>v.name), generals:m.vars.filter(v=>v.int&&v.ub>1).map(v=>v.name)}; },
+  // parse {varName:value} -> điền SOLVER_PLAN
+  apply(m,getVal){ m.days.forEach((day,di)=>{ const plan={'Sáng':[],'Chiều':[]};
+    Object.keys(day.avail).forEach(si=>day.avail[si].forEach(ca=>{ if((getVal(`x_${si}_${di}_${ca}`)||0)>0.5){ (ca==='S'?plan['Sáng']:plan['Chiều']).push(m.staffArr[si].id); } }));
+    SOLVER_PLAN[day.ds]=plan; }); },
+  /* ---- nạp HiGHS (chính) ---- */
+  async loadHighs(){ if(window.__HIGHS)return window.__HIGHS;
+    const BASE='https://cdn.jsdelivr.net/npm/highs@1.2.2/build/';
+    let factory=null;
+    try{ const mod=await import('https://cdn.jsdelivr.net/npm/highs@1.2.2/+esm'); factory=mod.default||mod.highs||mod; }catch(e){ /* thử cách 2 */ }
+    if(typeof factory!=='function'){ await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=BASE+'highs.js'; sc.onload=res; sc.onerror=()=>rej(new Error('không tải được highs.js (CDN/chặn mạng)')); document.head.appendChild(sc); });
+      factory=window.Module||window.highs||window.Highs||window.createHighsModule; }
+    if(typeof factory!=='function')throw new Error('không tìm thấy hàm khởi tạo HiGHS sau khi tải');
+    const highs=await factory({locateFile:f=>BASE+f}); window.__HIGHS=highs; return highs; },
+  /* ---- nạp GLPK (dự phòng) ---- */
+  async loadGLPK(){ if(window.__GLPK)return window.__GLPK;
+    let GLPK=null; try{ const mod=await import('https://cdn.jsdelivr.net/npm/glpk.js@4.0.2/+esm'); GLPK=mod.default||mod.GLPK||mod; }catch(e){ throw new Error('không tải được glpk.js: '+(e&&e.message||e)); }
+    if(typeof GLPK!=='function')throw new Error('glpk.js không đúng định dạng'); const glpk=await GLPK(); window.__GLPK=glpk; return glpk; },
+  async solveWeek(weekStart){ const t0=Date.now(); const m=this.buildModel(weekStart);
+    if(!m.days.length){ this.last={engine:'(ngày nghỉ)',ms:0}; return true; }
+    // 1) HiGHS
+    try{ const highs=await this.loadHighs(); const lp=this.toLP(m); const r=highs.solve(lp,{});
+      const st=(r&&(r.Status||r.status))||''; if(!/optimal/i.test(st)&&!(r&&r.Columns))throw new Error('HiGHS trả trạng thái: '+st);
+      const cols=r.Columns||{}; this.apply(m,n=>{const c=cols[n];return c?(c.Primal!=null?c.Primal:c.primal):0;});
+      this.last={engine:'HiGHS',ms:Date.now()-t0}; return true;
+    }catch(eH){ this.lastErrH=String(eH&&eH.message||eH);
+      // 2) GLPK
+      try{ const glpk=await this.loadGLPK(); const prob=this.toGLPK(m,glpk); const r=await glpk.solve(prob,glpk.GLP_MSG_OFF);
+        const vars=(r&&r.result&&r.result.vars)||{}; this.apply(m,n=>vars[n]||0);
+        this.last={engine:'GLPK',ms:Date.now()-t0}; return true;
+      }catch(eG){ this.lastErrG=String(eG&&eG.message||eG); throw new Error('HiGHS lỗi ('+this.lastErrH+') · GLPK lỗi ('+this.lastErrG+')'); } }
+  }
+};
+function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   trainMap=trainMap||{};
   const caH=S.config.caHours, half=N/2;
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TRỌN GÓI đơn/h — lấy trực tiếp từ bảng Nhân sự
@@ -1197,16 +1288,24 @@ function selectDay(N, crabD, pool, acc, trainMap, busy){
       || (load(a)-load(b))                            // 4) cân bằng ngày công + tránh trùng 2 ca
       || (((a.weekDays||99)-(b.weekDays||99))) )[0];
   };
-  // (1) Mỗi ca: thêm người đến khi đủ NỬA chỉ tiêu (tối thiểu người/ca)
-  for(const ca of CAS){ let g=0; while(caCap(ca)<half-1e-6&&g++<300){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; pick[ca].push(bestFor(ca,cand)); } }
-  // (2) BÙ CHÉO: tổng ngày chưa đủ -> thêm vào ca còn người (ca khoẻ gánh thêm cho ca yếu)
-  let gx=0; while(dayCap()<N-1e-6&&gx++<300){ let added=false; for(const ca of CAS.slice().sort((a,b)=>caCap(a)-caCap(b))){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; pick[ca].push(bestFor(ca,cand)); added=true; break; } if(!added)break; }
-  // (3) MAN ĐỦ KHÂU mỗi ca: khâu nào pool phủ được mà pick chưa -> thêm người biết làm
-  for(const ca of CAS){ let g=0; while(g++<40){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; if(!uncoveredIn(ca,cand).length)break; pick[ca].push(bestFor(ca,cand)); } }
-  // admin tích thêm người vào nút thắt
+  if(forcedPick){
+    // ===== BỘ TỐI ƯU (HiGHS/GLPK) đã quyết ai làm ca nào -> dùng ĐÚNG kết quả đó =====
+    CAS.forEach(ca=>{ (forcedPick[ca]||[]).forEach(id=>{ const p=pool.find(x=>x.id===id&&x.caList.includes(ca)); if(p&&!inca(ca,p))pick[ca].push(p); }); });
+  } else {
+    // ===== GREEDY (dự phòng khi chưa/không có solver) =====
+    // (1) Mỗi ca: thêm người đến khi đủ NỬA chỉ tiêu (tối thiểu người/ca)
+    for(const ca of CAS){ let g=0; while(caCap(ca)<half-1e-6&&g++<300){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; pick[ca].push(bestFor(ca,cand)); } }
+    // (2) BÙ CHÉO: tổng ngày chưa đủ -> thêm vào ca còn người
+    let gx=0; while(dayCap()<N-1e-6&&gx++<300){ let added=false; for(const ca of CAS.slice().sort((a,b)=>caCap(a)-caCap(b))){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; pick[ca].push(bestFor(ca,cand)); added=true; break; } if(!added)break; }
+    // (3) MAN ĐỦ KHÂU mỗi ca
+    for(const ca of CAS){ let g=0; while(g++<40){ const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)break; if(!uncoveredIn(ca,cand).length)break; pick[ca].push(bestFor(ca,cand)); } }
+  }
+  // admin tích thêm người vào nút thắt (luôn áp dụng — admin override)
   Object.keys(trainMap).forEach(sid=>{ const p=pool.find(x=>x.id===sid); if(p)CAS.forEach(ca=>{ if(p.caList.includes(ca)&&!inca(ca,p))pick[ca].push(p); }); });
-  // (4) DỒN/LÓT khâu nút thắt: ngày THIẾU năng lực HOẶC ngày ĐÔNG còn khâu yếu -> người GIỎI khâu đó trước, hết giỏi thì người rảnh (theo gộp) vào lót (trợ lực). Hết người -> báo thiếu.
-  let g2=0; while(g2++<400){ let acted=false; for(const ca of CAS){ const team=caTeam(ca); if(!team.length)continue; const cov=coverageOf(Math.max(1,half),team); const capShort=caCap(ca)<half-1e-6; const stageWeak=busy&&!cov.fully; if(!capShort&&!stageWeak)continue; const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; const bn=cov.bottleneck.key; const p=cand.slice().sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||((acc[a.id]||0)-(acc[b.id]||0))||(pr(b)-pr(a)))[0]; pick[ca].push(p); if((p.skills[bn]||0)<benchmark(bn)*(S.config.trainAssist||0.35))trainEff[p.id]=bn; acted=true; } if(!acted)break; }
+  if(!forcedPick){
+    // (4) DỒN/LÓT khâu nút thắt (chỉ greedy): ngày THIẾU/ĐÔNG còn khâu yếu -> giỏi trước, hết thì lót
+    let g2=0; while(g2++<400){ let acted=false; for(const ca of CAS){ const team=caTeam(ca); if(!team.length)continue; const cov=coverageOf(Math.max(1,half),team); const capShort=caCap(ca)<half-1e-6; const stageWeak=busy&&!cov.fully; if(!capShort&&!stageWeak)continue; const cand=pool.filter(p=>p.caList.includes(ca)&&!inca(ca,p)); if(!cand.length)continue; const bn=cov.bottleneck.key; const p=cand.slice().sort((a,b)=>((b.skills[bn]||0)-(a.skills[bn]||0))||((acc[a.id]||0)-(acc[b.id]||0))||(pr(b)-pr(a)))[0]; pick[ca].push(p); if((p.skills[bn]||0)<benchmark(bn)*(S.config.trainAssist||0.35))trainEff[p.id]=bn; acted=true; } if(!acted)break; }
+  }
   // gom SELECTED (union các ca), gắn pca = ca thực làm + cas = số ca thực làm
   const byId={}; CAS.forEach(ca=>pick[ca].forEach(p=>{ if(!byId[p.id])byId[p.id]={...p,pca:[]}; if(!byId[p.id].pca.includes(ca))byId[p.id].pca.push(ca); }));
   const selected=Object.values(byId); selected.forEach(p=>p.cas=p.pca.length);
@@ -1280,7 +1379,8 @@ function planDay(d, acc){
   if(t==='closed'){const sd=selectDay(0,0,[],acc,{});return {ds,d,type:t,orders:0,crabD:0,sd,ord:{selected:[],status:'ok',cov:coverageOf(0,[]),capacity:0},crab:{selected:[],short:false,more:0,demand:0,cap:0},finalRest:pool,kind:'closed',caStat:sd.caStat};}
   // NGÀY ĐÔNG: đỉnh / 15-25 / có đơn dồn từ ngày nghỉ -> dồn toàn lực phủ khâu, lót khâu yếu
   const busy = (t==='peak'||t==='mid') || rolledOrders(d)>0.5;
-  const sd=selectDay(orders, crabD, pool, acc, trainMap, busy);
+  const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
+  const sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
   const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:(p.pca?p.pca.length:p.caList.length)*S.config.caHours}))); // nhận xét kỹ năng cấp ngày (theo ca thực làm)
   const ordShort=sd.ordersCap<orders-1e-6;
   const ordStatus=ordShort?'short_people':(!cov.fully?'short_skill':'ok');
@@ -1546,7 +1646,8 @@ function renderWeekView(){
     <div class="box"><div class="l">Thừa người</div><div class="n" style="color:var(--warn)">${cSurplus}</div></div>
     <div class="box"><div class="l">Lệch kỹ năng</div><div class="n" style="color:var(--warn)">${cSkill}</div></div>`;
 
-  document.getElementById('planGrid').innerHTML=result.map((r,i)=>{
+  const ws=document.getElementById('plan-week').value;
+  document.getElementById('planGrid').innerHTML=optBanner(ws)+result.map((r,i)=>{
     const tb={normal:['b-normal','Ngày thường'],mid:['b-mid','Ngày 15&25'],peak:['b-peak','Ngày trùng'],closed:['b-closed','Đóng cửa']}[r.type];
     const hc=headcountText(r);
     const sb=hc.cls, st=hc.text;
@@ -1636,6 +1737,35 @@ function renderWeekView(){
     `<table><thead><tr><th>Nhân sự</th><th>Số ca / tuần</th><th style="width:55%"></th></tr></thead><tbody>`+
     act.map(s=>{const v=acc[s.id]||0;return `<tr><td>${esc(s.name)}</td><td>${v}</td><td><div class="fairbar" style="width:${Math.max(8,v/max*100)}%">${v}</div></td></tr>`}).join('')+
     `</tbody></table>`;
+  maybeOptimize(ws); // kích hoạt bộ tối ưu (async) cho tuần đang xem
+}
+
+/* ---- BỘ TỐI ƯU: bảng trạng thái + kích hoạt ---- */
+function optBanner(ws){
+  if(S.config.useOptimizer===false) return `<div class="optbar off">🧠 Bộ tối ưu: <b>ĐANG TẮT</b> (đang dùng cách thường). <a href="#" onclick="S.config.useOptimizer=true;SOLVER_STATE={};SOLVER_PLAN={};saveAll();renderPlan();return false">Bật lại</a></div>`;
+  const st=SOLVER_STATE[ws]||{};
+  if(st.pending) return `<div class="optbar run">🧠 <b>Đang tối ưu lịch…</b> (giải bài MILP bằng HiGHS). Chờ vài giây…</div>`;
+  if(st.done) return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> bằng <b>${esc(st.engine||'?')}</b> (${st.ms||0}ms) ✓ <a href="#" onclick="SOLVER_STATE={};SOLVER_PLAN={};renderPlan();return false">tối ưu lại</a> · <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
+  if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — đang tạm dùng cách thường (greedy), lịch vẫn hợp lệ. <a href="#" onclick="SOLVER_STATE={};renderPlan();return false">thử lại</a><br><small>Lỗi: ${esc(st.err||'')}</small><br><small>👉 Bạn mở <b>F12 → Console</b> chụp màn hình gửi tôi để sửa.</small></div>`;
+  return `<div class="optbar run">🧠 Chuẩn bị tối ưu…</div>`;
+}
+function _hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h;}
+function optHash(ws){ const days=datesOfWeek(ws).map(fmt);
+  const reg=days.map(ds=>JSON.stringify(S.reg[ds]||{})).join('|');
+  const rest=days.map(ds=>JSON.stringify((S.restDays||{})[ds]||[])).join('|');
+  const staff=S.staff.filter(s=>s.active).map(s=>s.id+s.prod+s.type+JSON.stringify(s.skills)).join('|');
+  const dem=JSON.stringify(S.demand.base)+S.demand.month+JSON.stringify(S.demand.mult)+S.demand.midDates+S.demand.peakDates+S.demand.closedDates;
+  return _hashStr(reg+rest+staff+dem+S.config.caHours+S.config.prod); }
+let _optBusy=false;
+function maybeOptimize(ws){
+  if(S.config.useOptimizer===false||!ws) return;
+  const h=optHash(ws), st=SOLVER_STATE[ws];
+  if(st&&st.pending) return;
+  if(st&&st.hash===h&&(st.done||st.failed)) return; // chưa đổi dữ liệu -> giữ kết quả
+  if(_optBusy) return; _optBusy=true;
+  SOLVER_STATE[ws]={pending:true,hash:h};
+  setTimeout(()=>{ OPT.solveWeek(ws).then(()=>{ SOLVER_STATE[ws]={done:true,hash:h, engine:OPT.last&&OPT.last.engine, ms:OPT.last&&OPT.last.ms}; _optBusy=false; if(curTab==='plan')renderPlan(); })
+    .catch(e=>{ SOLVER_STATE[ws]={failed:true,hash:h, err:String(e&&e.message||e)}; _optBusy=false; if(curTab==='plan')renderPlan(); }); }, 50);
 }
 
 /* ---- điều phối view ---- */
