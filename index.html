@@ -473,7 +473,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-11 (chỉ tiêu 60/40 + dao động ±3%)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-12 (sửa HÔM NAY lệch múi giờ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1758,7 +1758,7 @@ function renderWeekView(){
           <span class="stpct">${Math.round(rt)}<small style="color:var(--muted);font-weight:400"> ·${c}%${warn}</small></span>
         </div>`;
       }).join('')}</div>` : '';
-    const isToday = fmt(r.d)===fmt(new Date());
+    const _nowT=new Date(); const isToday = r.d.getFullYear()===_nowT.getFullYear()&&r.d.getMonth()===_nowT.getMonth()&&r.d.getDate()===_nowT.getDate(); // so theo NGÀY ĐỊA PHƯƠNG (tránh lệch múi giờ của toISOString)
     return `<div class="day ${r.status}${isToday?' today':''}">
       <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
