@@ -460,7 +460,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.09-5 (viết lại nhất quán A–D)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.09-6 (phủ chắc mọi khâu)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1241,23 +1241,23 @@ function selectDay(N, crabD, pool, acc, trainMap, busy){
       gap=covCa.skillGap; bnKey=covCa.bottleneck.key;
       S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(covCa.skillGap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
       slowKeys=S.stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu CHẬM nhất (nút thắt) — vd Gói hộp, Bọc xóc
-      // VAI TRÒ = theo coverageOf phân GIỜ tối ưu năng lực: người NHANH được dồn vào khâu cần, người yếu chỉ nhận khâu họ làm ỔN (ko bị ép vào nút thắt)
-      members.forEach(p=>{const a=covCa.assign[p.id]||{}; assignH[p.id]=a;
-        let r=Object.entries(a).filter(([,h])=>h>0.001).sort((x,y)=>y[1]-x[1]).map(([k])=>k);
-        if(trainEff[p.id]&&!r.includes(trainEff[p.id]))r=[trainEff[p.id],...r];
-        roles[p.id]=r.slice(0,3);});
-      // đảm bảo MỌI khâu có người: khâu trống -> giao cho người GIỎI NHẤT khâu đó (không phải người rảnh nhất)
-      S.stages.forEach(s=>{ if(members.some(p=>(roles[p.id]||[]).includes(s.key)))return;
-        let bp=members.filter(p=>(p.skills[s.key]||0)>0).sort((a,b)=>(b.skills[s.key]||0)-(a.skills[s.key]||0))[0];
-        if(!bp){bp=null;let bh=0;members.forEach(p=>{const h=(assignH[p.id]||{})[s.key]||0;if(h>bh){bh=h;bp=p;}});}
-        if(bp)roles[bp.id].push(s.key); });
-      // TÁCH khâu chậm: nếu 1 người ôm cả 2 khâu chậm -> nhả khâu yếu hơn cho người KHÁC giỏi khâu đó
-      members.forEach(p=>{ const mine=(roles[p.id]||[]).filter(k=>slowKeys.includes(k)); if(mine.length<2)return;
-        const drop=(p.skills[mine[0]]||0)>=(p.skills[mine[1]]||0)?mine[1]:mine[0];
-        const cand=members.filter(q=>q.id!==p.id&&(q.skills[drop]||0)>0&&!(roles[q.id]||[]).some(k=>slowKeys.includes(k))).sort((a,b)=>(b.skills[drop]||0)-(a.skills[drop]||0))[0];
-        if(cand){roles[p.id]=roles[p.id].filter(k=>k!==drop); if(!roles[cand.id].includes(drop))roles[cand.id]=[drop,...roles[cand.id]].slice(0,3);} });
+      // VAI TRÒ — duyệt khâu CHẬM→NHANH, PHỦ CHẮC mọi khâu có người biết làm.
+      // Khâu nghẽn/tốn thời gian -> người GIỎI nhất & 2 khâu nghẽn 2 người RIÊNG. Khâu nhanh -> người đang ít vai trò (kém hơn) lo, người mạnh xong khâu nhanh thì dồn sang lót.
+      members.forEach(p=>{assignH[p.id]=covCa.assign[p.id]||{}; roles[p.id]=[];});
+      const onBn=p=>roles[p.id].some(k=>slowKeys.includes(k));
+      members.forEach(p=>{ if(trainEff[p.id]&&!roles[p.id].includes(trainEff[p.id]))roles[p.id].push(trainEff[p.id]); }); // người lót/đào tạo gắn sẵn vào nút thắt
+      S.stages.slice().sort((a,b)=>a.rate-b.rate).forEach(s=>{
+        const k=s.key; if(members.some(p=>roles[p.id].includes(k)))return;
+        let cap=members.filter(p=>(p.skills[k]||0)>0); if(!cap.length)cap=members.slice(); // chưa ai biết -> vẫn cử 1 người (học việc) để không bỏ trống
+        let pickers=cap.slice();
+        if(slowKeys.includes(k)){ const free=cap.filter(p=>!onBn(p)); if(free.length)pickers=free; // 2 khâu nghẽn KHÁC người
+          pickers.sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0)); }                                  // khâu nghẽn -> GIỎI nhất
+        else pickers.sort((a,b)=>(roles[a.id].length-roles[b.id].length)||((b.skills[k]||0)-(a.skills[k]||0))); // khâu nhanh -> trải đều rồi giỏi
+        roles[pickers[0].id].push(k);
+      });
+      // người đã chọn mà CHƯA có vai trò -> LÓT vào khâu nghẽn (khâu chậm họ giúp được, hoặc khâu đang thắt)
+      members.forEach(p=>{ if(roles[p.id].length)return; const k=slowKeys.find(k=>(p.skills[k]||0)>0)||slowKeys[0]||bnKey; if(k){roles[p.id].push(k); if((p.skills[k]||0)<benchmark(k)*(S.config.trainAssist||0.35))trainEff[p.id]=k;} });
       slowConflict=members.filter(p=>roles[p.id].filter(k=>slowKeys.includes(k)).length>=2).map(p=>p.name);
-      // khâu chậm nhất đang là nút thắt? đếm người đứng khâu đó
       const slowBn = slowKeys.includes(bnKey)?bnKey:slowKeys[0];
       const slowStaff = members.filter(p=>(roles[p.id]||[]).includes(slowBn)).length;
       slowReco={key:slowBn, staff:slowStaff, isBn:bnKey===slowBn};
