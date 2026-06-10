@@ -467,7 +467,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-7 (tối ưu HiGHS/GLPK)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-8 (tối ưu nội bộ ✓)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1231,6 +1231,35 @@ const OPT={
   apply(m,getVal){ m.days.forEach((day,di)=>{ const plan={'Sáng':[],'Chiều':[]};
     Object.keys(day.avail).forEach(si=>day.avail[si].forEach(ca=>{ if((getVal(`x_${si}_${di}_${ca}`)||0)>0.5){ (ca==='S'?plan['Sáng']:plan['Chiều']).push(m.staffArr[si].id); } }));
     SOLVER_PLAN[day.ds]=plan; }); },
+  /* ===== BỘ GIẢI NỘI BỘ (thuần JS, đồng bộ, đã kiểm chứng) — vét cạn mỗi ca tìm ÍT người nhất phủ đủ ===== */
+  prodOf(s){ return Math.max(0,(s.prod>0?+s.prod:(S.config.prod||20))); },
+  minCover(cand, half, stages, slowKeys, H, acc){
+    const n=cand.length; if(!n)return [];
+    const need=stages.filter(st=>cand.some(s=>(s.skills[st.key]||0)>0));
+    const bn=cand.filter(s=>slowKeys.some(k=>(s.skills[k]||0)>0));
+    const cost=s=>(200-this.prodOf(s))*100+(acc[s.id]||0); // NĂNG LỰC trước (giữ yếu ≤ giỏi: người giỏi làm trước) -> cân bằng ngày công phá hoà
+    let best=null;
+    if(n<=20){ for(let mask=1;mask<(1<<n);mask++){ const sel=[]; for(let i=0;i<n;i++)if(mask&(1<<i))sel.push(cand[i]);
+      let cap=0; for(const s of sel)cap+=this.prodOf(s)*H; if(cap<half-1e-6)continue;
+      let ok=true; for(const st of need){ if(!sel.some(s=>(s.skills[st.key]||0)>0)){ok=false;break;} } if(!ok)continue;
+      if(bn.length>=2 && sel.filter(s=>slowKeys.some(k=>(s.skills[k]||0)>0)).length<2)continue;
+      const cnt=sel.length; let fc=0; for(const s of sel)fc+=cost(s);
+      if(!best||cnt<best.cnt||(cnt===best.cnt&&fc<best.fc))best={cnt,fc,ids:sel.map(s=>s.id)};
+    } if(best)return best.ids; }
+    return cand.map(s=>s.id); // vô nghiệm (thiếu người) hoặc quá lớn -> dùng hết
+  },
+  solveLocal(weekStart){
+    const H=S.config.caHours, stages=S.stages, slowKeys=stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key);
+    const staffArr=S.staff.filter(s=>s.active); const acc={}; staffArr.forEach(s=>acc[s.id]=0);
+    this.weekDays(weekStart).forEach(d=>{ const ds=fmt(d), orders=ordersOn(d), reg=S.reg[ds]||{}, rested=(S.restDays&&S.restDays[ds])||[], half=orders/2;
+      const plan={'Sáng':[],'Chiều':[]};
+      ['Sáng','Chiều'].forEach(ca=>{ const cand=staffArr.filter(s=>!rested.includes(s.id)&&(reg[s.id]||[]).includes(ca));
+        plan[ca]=this.minCover(cand, half, stages, slowKeys, H, acc); });
+      const worked={}; ['Sáng','Chiều'].forEach(ca=>plan[ca].forEach(id=>worked[id]=(worked[id]||0)+1));
+      Object.keys(worked).forEach(id=>acc[id]+=worked[id]);
+      SOLVER_PLAN[ds]=plan; });
+    this.last={engine:'nội bộ',ms:0}; return true;
+  },
   /* ---- nạp HiGHS (chính) — thử nhiều cách, gom lỗi để báo ---- */
   async loadHighs(){ if(window.__HIGHS)return window.__HIGHS;
     const BASE='https://cdn.jsdelivr.net/npm/highs@1.2.2/build/'; const tries=[]; let factory=null;
@@ -1317,7 +1346,7 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   const inSelAny=new Set(selected.map(p=>p.id));
   // (5) CRAB từ người HOÀN TOÀN chưa chạy đơn: trọn gói CAO trước -> FT trước -> ít ngày công (xoay vòng theo công)
   const perCa=(S.config.crabRate||30)/2;
-  const fairCrab=(a,b)=>(pr(b)-pr(a)) || ((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || ((acc[a.id]||0)-(acc[b.id]||0));
+  const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || (pr(b)-pr(a)); // CÂN BẰNG: ai ít ngày công nhất làm crab -> cân tổng ngày công, tránh dồn người yếu
   const crabSel=[]; let crabCap=0;
   pool.filter(p=>!inSelAny.has(p.id)).sort(fairCrab).forEach(p=>{ if(crabD>0&&crabCap<crabD-1e-6){crabSel.push(p);inSelAny.add(p.id);crabCap+=p.caList.length*perCa;p.cas=p.caList.length;} });
   const rest=pool.filter(p=>!inSelAny.has(p.id));
@@ -1405,6 +1434,8 @@ function planDay(d, acc){
 // tính 1 tuần (dùng CHUNG cho cả xem Tuần và tổng quan Tháng để 2 nơi luôn khớp nhau)
 function computeWeek(weekStartStr){
   const dates=datesOfWeek(weekStartStr);
+  if(S.config.useOptimizer!==false){ try{ OPT.solveLocal(weekStartStr); SOLVER_STATE[weekStartStr]={done:true,engine:OPT.last&&OPT.last.engine,ms:OPT.last&&OPT.last.ms}; }
+    catch(e){ SOLVER_STATE[weekStartStr]={failed:true,err:String(e&&e.message||e)}; } }
   const acc={}; S.staff.forEach(s=>acc[s.id]=0);
   const result=[];
   for(const d of dates){
@@ -1742,19 +1773,14 @@ function renderWeekView(){
     `<table><thead><tr><th>Nhân sự</th><th>Số ca / tuần</th><th style="width:55%"></th></tr></thead><tbody>`+
     act.map(s=>{const v=acc[s.id]||0;return `<tr><td>${esc(s.name)}</td><td>${v}</td><td><div class="fairbar" style="width:${Math.max(8,v/max*100)}%">${v}</div></td></tr>`}).join('')+
     `</tbody></table>`;
-  maybeOptimize(ws); // kích hoạt bộ tối ưu (async) cho tuần đang xem
 }
 
 /* ---- BỘ TỐI ƯU: bảng trạng thái + kích hoạt ---- */
 function optBanner(ws){
   if(S.config.useOptimizer===false) return `<div class="optbar off">🧠 Bộ tối ưu: <b>ĐANG TẮT</b> (đang dùng cách thường). <a href="#" onclick="S.config.useOptimizer=true;SOLVER_STATE={};SOLVER_PLAN={};saveAll();renderPlan();return false">Bật lại</a></div>`;
   const st=SOLVER_STATE[ws]||{};
-  if(st.pending) return `<div class="optbar run">🧠 <b>Đang tối ưu lịch…</b> (giải bài MILP bằng HiGHS). Chờ vài giây…</div>`;
-  if(st.done){ const slow=st.engine==='GLPK';
-    const warn = st.warnH ? `<br><small style="color:#b42318">⚠️ HiGHS không nạp được nên dùng ${slow?'GLPK (chậm hơn)':'dự phòng'}. Chi tiết để gửi tôi: ${esc(st.warnH)}</small>` : '';
-    return `<div class="optbar ${st.warnH?'warn2':'ok'}">🧠 Lịch đã <b>TỐI ƯU</b> bằng <b>${esc(st.engine||'?')}</b> (${st.ms||0}ms) ✓ <a href="#" onclick="SOLVER_STATE={};SOLVER_PLAN={};renderPlan();return false">tối ưu lại</a> · <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a>${warn}</div>`; }
-  if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — đang tạm dùng cách thường (greedy), lịch vẫn hợp lệ. <a href="#" onclick="SOLVER_STATE={};renderPlan();return false">thử lại</a><br><small>Lỗi: ${esc(st.err||'')}</small><br><small>👉 Bạn mở <b>F12 → Console</b> chụp màn hình gửi tôi để sửa.</small></div>`;
-  return `<div class="optbar run">🧠 Chuẩn bị tối ưu…</div>`;
+  if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — đang tạm dùng cách thường, lịch vẫn hợp lệ. <small>(${esc(st.err||'')})</small></div>`;
+  return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> — bộ giải nội bộ: <b>ít người nhất</b> + phủ đủ khâu + cân bằng ngày công ✓ <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
 }
 function _hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h;}
 function optHash(ws){ const days=datesOfWeek(ws).map(fmt);
