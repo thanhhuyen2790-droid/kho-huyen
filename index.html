@@ -467,7 +467,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-8 (tối ưu nội bộ ✓)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-9 (nội bộ + HiGHS)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1260,36 +1260,26 @@ const OPT={
       SOLVER_PLAN[ds]=plan; });
     this.last={engine:'nội bộ',ms:0}; return true;
   },
-  /* ---- nạp HiGHS (chính) — thử nhiều cách, gom lỗi để báo ---- */
+  /* ---- nạp HiGHS — ưu tiên FILE NỘI BỘ (./highs.js, nhanh), không có thì dùng unpkg ---- */
   async loadHighs(){ if(window.__HIGHS)return window.__HIGHS;
-    const BASE='https://cdn.jsdelivr.net/npm/highs@1.2.2/build/'; const tries=[]; let factory=null;
-    const okFn=f=>typeof f==='function';
-    try{ const m=await import('https://cdn.jsdelivr.net/npm/highs@1.2.2/+esm'); factory=m.default||m.highs||(okFn(m)?m:null); if(!okFn(factory))throw new Error('export không phải hàm'); }
-    catch(e){ tries.push('esm@jsdelivr: '+(e&&e.message||e)); factory=null; }
-    if(!okFn(factory)){ try{ const m=await import('https://esm.sh/highs@1.2.2'); factory=m.default||m.highs||(okFn(m)?m:null); if(!okFn(factory))throw new Error('export không phải hàm'); }
-      catch(e){ tries.push('esm.sh: '+(e&&e.message||e)); factory=null; } }
-    if(!okFn(factory)){ try{ await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=BASE+'highs.js'; sc.onload=res; sc.onerror=()=>rej(new Error('không tải được file')); document.head.appendChild(sc); });
-        factory=window.Module||window.highs||window.Highs||window.createHighsModule||window.HiGHS; if(!okFn(factory))throw new Error('tải xong nhưng không thấy hàm khởi tạo (global)'); }
-      catch(e){ tries.push('script: '+(e&&e.message||e)); factory=null; } }
-    if(!okFn(factory)) throw new Error('không nạp được HiGHS ['+tries.join(' || ')+']');
-    const highs=await factory({locateFile:f=>BASE+f}); window.__HIGHS=highs; return highs; },
+    const bases=['./','https://unpkg.com/highs/build/']; const tries=[];
+    for(const BASE of bases){ try{
+        await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=BASE+'highs.js'; sc.onload=res; sc.onerror=()=>rej(new Error('không tải được '+BASE+'highs.js')); document.head.appendChild(sc); });
+        const factory=window.Module; if(typeof factory!=='function')throw new Error('tải xong nhưng không thấy global Module');
+        const highs=await factory({locateFile:f=>BASE+f, print:()=>{}, printErr:()=>{}});
+        window.__HIGHS=highs; return highs;
+      }catch(e){ tries.push((BASE==='./'?'nội bộ':'unpkg')+': '+(e&&e.message||e)); } }
+    throw new Error('không nạp được HiGHS ['+tries.join(' || ')+']'); },
   /* ---- nạp GLPK (dự phòng) ---- */
   async loadGLPK(){ if(window.__GLPK)return window.__GLPK;
     let GLPK=null; try{ const mod=await import('https://cdn.jsdelivr.net/npm/glpk.js@4.0.2/+esm'); GLPK=mod.default||mod.GLPK||mod; }catch(e){ throw new Error('không tải được glpk.js: '+(e&&e.message||e)); }
     if(typeof GLPK!=='function')throw new Error('glpk.js không đúng định dạng'); const glpk=await GLPK(); window.__GLPK=glpk; return glpk; },
-  async solveWeek(weekStart){ const t0=Date.now(); const m=this.buildModel(weekStart);
-    if(!m.days.length){ this.last={engine:'(ngày nghỉ)',ms:0}; return true; }
-    // 1) HiGHS
-    try{ const highs=await this.loadHighs(); const lp=this.toLP(m); const r=highs.solve(lp,{});
-      const st=(r&&(r.Status||r.status))||''; if(!/optimal/i.test(st)&&!(r&&r.Columns))throw new Error('HiGHS trả trạng thái: '+st);
-      const cols=r.Columns||{}; this.apply(m,n=>{const c=cols[n];return c?(c.Primal!=null?c.Primal:c.primal):0;});
-      this.last={engine:'HiGHS',ms:Date.now()-t0}; return true;
-    }catch(eH){ this.lastErrH=String(eH&&eH.message||eH);
-      // 2) GLPK
-      try{ const glpk=await this.loadGLPK(); const prob=this.toGLPK(m,glpk); const r=await glpk.solve(prob,glpk.GLP_MSG_OFF);
-        const vars=(r&&r.result&&r.result.vars)||{}; this.apply(m,n=>vars[n]||0);
-        this.last={engine:'GLPK',ms:Date.now()-t0, warnH:this.lastErrH}; return true;
-      }catch(eG){ this.lastErrG=String(eG&&eG.message||eG); throw new Error('HiGHS lỗi ('+this.lastErrH+') · GLPK lỗi ('+this.lastErrG+')'); } }
+  async solveHighs(weekStart){ const t0=Date.now(); const m=this.buildModel(weekStart);
+    if(!m.days.length){ this.last={engine:'HiGHS',ms:0}; return true; }
+    const highs=await this.loadHighs(); const lp=this.toLP(m); const r=highs.solve(lp,{});
+    const st=(r&&(r.Status||r.status))||''; if(!/optimal/i.test(st)&&!(r&&r.Columns))throw new Error('HiGHS trạng thái: '+st);
+    const cols=r.Columns||{}; this.apply(m,n=>{const c=cols[n];return c?(c.Primal!=null?c.Primal:c.primal):0;});
+    this.last={engine:'HiGHS',ms:Date.now()-t0}; return true;
   }
 };
 function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
@@ -1434,8 +1424,7 @@ function planDay(d, acc){
 // tính 1 tuần (dùng CHUNG cho cả xem Tuần và tổng quan Tháng để 2 nơi luôn khớp nhau)
 function computeWeek(weekStartStr){
   const dates=datesOfWeek(weekStartStr);
-  if(S.config.useOptimizer!==false){ try{ OPT.solveLocal(weekStartStr); SOLVER_STATE[weekStartStr]={done:true,engine:OPT.last&&OPT.last.engine,ms:OPT.last&&OPT.last.ms}; }
-    catch(e){ SOLVER_STATE[weekStartStr]={failed:true,err:String(e&&e.message||e)}; } }
+  ensurePlan(weekStartStr); // bộ giải nội bộ (đồng bộ, tức thì); HiGHS sẽ nâng cấp sau (async)
   const acc={}; S.staff.forEach(s=>acc[s.id]=0);
   const result=[];
   for(const d of dates){
@@ -1773,15 +1762,10 @@ function renderWeekView(){
     `<table><thead><tr><th>Nhân sự</th><th>Số ca / tuần</th><th style="width:55%"></th></tr></thead><tbody>`+
     act.map(s=>{const v=acc[s.id]||0;return `<tr><td>${esc(s.name)}</td><td>${v}</td><td><div class="fairbar" style="width:${Math.max(8,v/max*100)}%">${v}</div></td></tr>`}).join('')+
     `</tbody></table>`;
+  maybeHighs(ws); // thử nâng cấp bằng HiGHS (async) cho tuần đang xem
 }
 
 /* ---- BỘ TỐI ƯU: bảng trạng thái + kích hoạt ---- */
-function optBanner(ws){
-  if(S.config.useOptimizer===false) return `<div class="optbar off">🧠 Bộ tối ưu: <b>ĐANG TẮT</b> (đang dùng cách thường). <a href="#" onclick="S.config.useOptimizer=true;SOLVER_STATE={};SOLVER_PLAN={};saveAll();renderPlan();return false">Bật lại</a></div>`;
-  const st=SOLVER_STATE[ws]||{};
-  if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — đang tạm dùng cách thường, lịch vẫn hợp lệ. <small>(${esc(st.err||'')})</small></div>`;
-  return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> — bộ giải nội bộ: <b>ít người nhất</b> + phủ đủ khâu + cân bằng ngày công ✓ <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
-}
 function _hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h;}
 function optHash(ws){ const days=datesOfWeek(ws).map(fmt);
   const reg=days.map(ds=>JSON.stringify(S.reg[ds]||{})).join('|');
@@ -1789,16 +1773,33 @@ function optHash(ws){ const days=datesOfWeek(ws).map(fmt);
   const staff=S.staff.filter(s=>s.active).map(s=>s.id+s.prod+s.type+JSON.stringify(s.skills)).join('|');
   const dem=JSON.stringify(S.demand.base)+S.demand.month+JSON.stringify(S.demand.mult)+S.demand.midDates+S.demand.peakDates+S.demand.closedDates;
   return _hashStr(reg+rest+staff+dem+S.config.caHours+S.config.prod); }
-let _optBusy=false;
-function maybeOptimize(ws){
-  if(S.config.useOptimizer===false||!ws) return;
+// Bộ giải NỘI BỘ (đồng bộ): luôn lấp SOLVER_PLAN tức thì; nếu HiGHS đã giải đúng dữ liệu này thì giữ nguyên
+function ensurePlan(ws){
+  if(S.config.useOptimizer===false){ datesOfWeek(ws).forEach(d=>delete SOLVER_PLAN[fmt(d)]); SOLVER_STATE[ws]={off:true}; return; }
   const h=optHash(ws), st=SOLVER_STATE[ws];
-  if(st&&st.pending) return;
-  if(st&&st.hash===h&&(st.done||st.failed)) return; // chưa đổi dữ liệu -> giữ kết quả
-  if(_optBusy) return; _optBusy=true;
-  SOLVER_STATE[ws]={pending:true,hash:h};
-  setTimeout(()=>{ OPT.solveWeek(ws).then(()=>{ SOLVER_STATE[ws]={done:true,hash:h, engine:OPT.last&&OPT.last.engine, ms:OPT.last&&OPT.last.ms, warnH:OPT.last&&OPT.last.warnH}; _optBusy=false; if(curTab==='plan')renderPlan(); })
-    .catch(e=>{ SOLVER_STATE[ws]={failed:true,hash:h, err:String(e&&e.message||e)}; _optBusy=false; if(curTab==='plan')renderPlan(); }); }, 50);
+  if(st && st.hash===h && st.planFilled) return; // đã có kế hoạch (nội bộ hoặc HiGHS) cho dữ liệu này
+  try{ OPT.solveLocal(ws); SOLVER_STATE[ws]={hash:h, engine:'nội bộ', planFilled:true}; }
+  catch(e){ SOLVER_STATE[ws]={hash:h, failed:true, err:String(e&&e.message||e)}; }
+}
+// HiGHS (async) nâng cấp lịch: chạy sau khi đã có lịch nội bộ; thành công thì đè lên, lỗi thì giữ nội bộ
+let _highsBusy=false;
+function maybeHighs(ws){
+  if(S.config.useOptimizer===false || S.config.useHighs===false || !ws) return;
+  const h=optHash(ws), st=SOLVER_STATE[ws]||{};
+  if(st.hash!==h) return;                 // chờ ensurePlan
+  if(st.engine==='HiGHS') return;         // đã HiGHS rồi
+  if(st.highsTried) return;               // đã thử HiGHS cho dữ liệu này
+  if(_highsBusy) return; _highsBusy=true;
+  setTimeout(()=>{ OPT.solveHighs(ws).then(()=>{ SOLVER_STATE[ws]={hash:h, engine:'HiGHS', planFilled:true, ms:OPT.last&&OPT.last.ms}; _highsBusy=false; if(curTab==='plan')renderPlan(); })
+    .catch(e=>{ SOLVER_STATE[ws]={hash:h, engine:'nội bộ', planFilled:true, highsTried:true, highsErr:String(e&&e.message||e)}; _highsBusy=false; if(curTab==='plan')renderPlan(); }); }, 30);
+}
+function optBanner(ws){
+  if(S.config.useOptimizer===false) return `<div class="optbar off">🧠 Bộ tối ưu: <b>ĐANG TẮT</b>. <a href="#" onclick="S.config.useOptimizer=true;saveAll();renderPlan();return false">Bật lại</a></div>`;
+  const st=SOLVER_STATE[ws]||{};
+  if(st.failed) return `<div class="optbar err">⚠️ Bộ tối ưu <b>LỖI</b> — dùng cách thường, lịch vẫn hợp lệ. <small>(${esc(st.err||'')})</small></div>`;
+  if(st.engine==='HiGHS') return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU bằng HiGHS</b> (${st.ms||0}ms) ✓ — tối ưu toàn cục. <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
+  const note = st.highsErr ? `<br><small>ℹ️ HiGHS chưa nạp được (kết quả nội bộ tương đương): ${esc(st.highsErr)}</small>` : (S.config.useHighs!==false?` <small style="color:var(--muted)">· đang thử nâng cấp HiGHS…</small>`:'');
+  return `<div class="optbar ok">🧠 Lịch đã <b>TỐI ƯU</b> — bộ giải nội bộ (ít người nhất + phủ đủ khâu) ✓${note} <a href="#" onclick="S.config.useOptimizer=false;saveAll();renderPlan();return false">tắt</a></div>`;
 }
 
 /* ---- điều phối view ---- */
