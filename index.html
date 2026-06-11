@@ -108,6 +108,10 @@
   .caRest{margin-top:6px;background:#f6f6f8;border:1px dashed #d4d4dd;border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--muted)}
   .famrow td{background:#f3f1fb;color:#534ab7;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.3px}
   .bn-tag{font-size:9.5px;color:#d4537e;font-weight:700;white-space:nowrap}
+  .stepno{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--brand,#5b4cd6);color:#fff;font-size:9.5px;font-weight:700;flex:none}
+  .trainsug{margin-top:14px;background:#f0f9f2;border:1px solid #bfe3c8;border-radius:10px;padding:12px}
+  .trainrow{padding:5px 0;border-top:1px dashed #d4e8d9;font-size:13px}
+  .trainrow:first-of-type{border-top:none}
   .flownote{margin-top:6px;background:#eafaf3;border:1px solid #bfe7d6;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#0f6e56}
   .pvmodal{position:fixed;inset:0;background:rgba(20,20,40,.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:18px}
   .pvbox{background:#fff;border-radius:14px;max-width:1000px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)}
@@ -498,7 +502,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-24 (đồng bộ chỉ tiêu bảng lịch & bảng phân bổ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-26 (gợi ý đào tạo có trọng tâm cho người yếu)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1776,10 +1780,36 @@ function renderAttendance(){
 }
 
 /* ---- độ phủ kỹ năng & rủi ro đào tạo chéo ---- */
+// GỢI Ý ĐÀO TẠO: ghép nhân sự mới/yếu với khâu đang mỏng hoặc khâu nghẽn (theo tố chất + cùng nhóm) để sớm có thêm người giỏi
+function trainingSuggestions(){
+  const act=S.staff.filter(s=>s.active), stages=S.stages;
+  const isGood=(p,s)=>(p.skills[s.key]||0)>=0.8*s.rate;
+  const goodCount=s=>act.filter(p=>isGood(p,s)).length;
+  const goodStages=p=>stages.filter(s=>isGood(p,s)).length;
+  const slowKeys=stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key);
+  // khâu cần thêm người giỏi: (a) mỏng <2 người giỏi (rủi ro phụ thuộc), hoặc (b) khâu NGHẼN (thêm người = chạy song song nhanh hơn)
+  // BỎ khâu bấm hàng loạt (rate≥500, vd Xác nhận) — ai cũng làm nhanh, ko cần đào tạo
+  const targets=stages.filter(s=>s.rate<500).map(s=>({s,good:goodCount(s),bn:slowKeys.includes(s.key)}))
+    .filter(x=>x.good<2 || x.bn)
+    .sort((a,b)=>(a.good-b.good)||(b.bn-a.bn)||(a.s.rate-b.s.rate));
+  const pending={}; stages.forEach(s=>pending[s.key]=goodCount(s));
+  const assigned=new Set(); const recs=[];
+  targets.forEach(x=>{ const s=x.s; if(pending[s.key]>=2 && !x.bn)return; if(x.bn && pending[s.key]>=4)return; // nghẽn cho phép tới 4 người
+    const need=Math.round(0.8*s.rate);
+    // ứng viên: CHƯA giỏi khâu này, chưa được gán khâu khác. Điểm = tố chất (đào tạo nhanh) + thưởng người YẾU + cùng nhóm
+    const cand=act.filter(p=>!isGood(p,s)&&!assigned.has(p.id));
+    if(!cand.length)return;
+    const score=p=>((p.skills[s.key]||0)/s.rate) + (goodStages(p)<=2?0.18:goodStages(p)<=3?0.08:0) + (personFamily(p)===stageFamily(s.key)?0.1:0);
+    cand.sort((a,b)=>score(b)-score(a));
+    const p=cand[0]; assigned.add(p.id); pending[s.key]++;
+    recs.push({s, p, cur:Math.round(p.skills[s.key]||0), need, good:x.good, bn:x.bn, gap:Math.max(0,need-Math.round(p.skills[s.key]||0))});
+  });
+  return recs.slice(0,6);
+}
 function renderSkillRisk(){
   const box=document.getElementById('skillRisk'); if(!box)return;
   const act=S.staff.filter(s=>s.active);
-  box.innerHTML=`<table><thead><tr><th>Khâu</th><th>Chuẩn</th><th>Người làm được</th><th>Người giỏi (≥80% chuẩn)</th><th>Tốc độ TB</th><th>Rủi ro</th></tr></thead><tbody>`+
+  let html=`<table><thead><tr><th>Khâu</th><th>Chuẩn</th><th>Người làm được</th><th>Người giỏi (≥80% chuẩn)</th><th>Tốc độ TB</th><th>Rủi ro</th></tr></thead><tbody>`+
     S.stages.map(s=>{
       const can=act.filter(p=>(p.skills[s.key]||0)>0).length;
       const good=act.filter(p=>(p.skills[s.key]||0)>=0.8*s.rate).length;
@@ -1787,6 +1817,16 @@ function renderSkillRisk(){
       const risk=good===0?['b-bad','Nguy hiểm — chưa ai giỏi']:good<2?['b-warn','Mỏng — chỉ 1 người giỏi']:['b-ok','Ổn'];
       return `<tr><td><b>${esc(s.name)}</b></td><td class="pill">${s.rate} đơn/h</td><td>${can}</td><td>${good}</td><td>${Math.round(avg)} đơn/h</td><td><span class="badge ${risk[0]}">${risk[1]}</span></td></tr>`;
     }).join('')+`</tbody></table>`;
+  // GỢI Ý ĐÀO TẠO CÓ TRỌNG TÂM
+  const recs=trainingSuggestions();
+  if(recs.length){
+    html+=`<div class="trainsug"><b>🎯 Đề xuất đào tạo có trọng tâm</b> <small class="hint">— ưu tiên người mới/yếu, mỗi người tập trung 1 khâu để sớm bổ sung vào đội hình</small><div style="margin-top:8px">`+
+      recs.map(r=>{ const why=r.good===0?'chưa ai giỏi — cần gấp':r.good<2?'đang mỏng (1 người giỏi)':'khâu nghẽn — thêm người để chạy song song';
+        const lvl=r.cur>0?`đang ${r.cur} đơn/h → cần ~${r.need}`:'làm từ đầu';
+        return `<div class="trainrow"><span class="badge ${r.good===0?'b-bad':r.bn?'b-mid':'b-warn'}">${r.good===0?'GẤP':r.bn?'NGHẼN':'MỎNG'}</span> <b>${esc(r.p.name)}</b> <small class="hint">${r.p.type}</small> → đào tạo khâu <b>${esc(r.s.name)}</b> <small class="hint">(${lvl}; lý do: ${why})</small></div>`;
+      }).join('')+`</div></div>`;
+  }
+  box.innerHTML=html;
 }
 
 /* ---- tổng quan THÁNG: 4 tuần (2 cũ, hiện tại, 1 tới) ---- */
@@ -1875,18 +1915,15 @@ function renderWeekView(){
       if(ca==='Tối'){
         body=cs.members.length?`<tr><td>Hỗ trợ</td><td>${cs.members.map(p=>esc(p.name)).join('<br>')}</td><td>—</td></tr>`:'';
       } else {
-        // xếp theo NHÓM: Nhặt (nhanh→chậm) rồi Đóng (nhanh→chậm) — đúng dòng chảy thực tế
-        const order=S.stages.slice().sort((a,b)=>((stageFamily(a.key)==='pick'?0:1)-(stageFamily(b.key)==='pick'?0:1))||(b.rate-a.rate));
-        let curFam=null;
-        body=order.map(s=>{
-          const fam=stageFamily(s.key); let head='';
-          if(fam!==curFam){curFam=fam; head=`<tr class="famrow"><td colspan="3">— Nhóm ${familyLabel(fam)} ${fam==='pick'?'(xác nhận · nhặt · kiểm · tít)':'(bọc xóc · gói hộp · bịt đầu)'} —</td></tr>`;}
+        // XẾP THEO ĐÚNG THỨ TỰ CÁC BƯỚC RA 1 ĐƠN (thứ tự khâu trong cấu hình) + đánh số bước cho dễ theo dòng chảy
+        body=S.stages.map((s,si)=>{
           const isBn=(cs.slowKeys||[]).includes(s.key); const tag=isBn?' <span class="bn-tag">🔴 nút thắt</span>':'';
+          const stepno=`<span class="stepno">${si+1}</span>`;
           const ppl=cs.members.filter(p=>(cs.roles&&cs.roles[p.id]||[]).includes(s.key));
-          if(!ppl.length)return head+`<tr><td>${esc(s.name)}${tag}</td><td colspan="2" style="color:var(--bad)">⛔ chưa có người</td></tr>`;
+          if(!ppl.length)return `<tr><td>${stepno} ${esc(s.name)}${tag}</td><td colspan="2" style="color:var(--bad)">⛔ chưa có người</td></tr>`;
           const stRate=p=>{ if(trainMap[p.id]===s.key)return Math.max(p.skills[s.key]||0, benchmark(s.key)*(S.config.trainAssist||0.35)); const v=p.skills[s.key]||0; return v>0?v:floorRateOf(s); };
           const hrOf=p=>{ const hh=((cs.assignH&&cs.assignH[p.id]&&cs.assignH[p.id][s.key])||0)*fTime; if(hh<0.15)return ''; const od=Math.round(hh*stRate(p)); return ` <small class="hint">${hh.toFixed(1)}h · ${od}đ</small>`; }; // giờ làm (đã quy đổi theo thời gian hoàn thành) · số đơn xử lý
-          return head+`<tr><td>${esc(s.name)}${tag}</td><td>${ppl.map(p=>esc(p.name)+hrOf(p)+(trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':'')).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
+          return `<tr><td>${stepno} ${esc(s.name)}${tag}</td><td>${ppl.map(p=>esc(p.name)+hrOf(p)+(trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':'')).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
         }).join('');
       }
       // C) DÒNG LUÂN CHUYỂN: khâu nhanh xong dồn sang 2 khâu nghẽn
