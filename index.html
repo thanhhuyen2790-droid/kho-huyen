@@ -514,7 +514,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-33 (sửa lỗi crash bảng khi triệu hồi Bà Chúa Kho)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-35 (đổi chữ banner Bà Chúa Kho)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -994,10 +994,37 @@ function teamThroughput(team, useFloor){
 // ===== MÔ HÌNH DÂY CHUYỀN (chuyên môn hoá, dồn người vào khâu nghẽn) =====
 function chainBuffer(){ return Math.max(0,Math.min(0.5,(S.config.chainBuffer!=null?+S.config.chainBuffer:12)/100)); } // đệm hao phí chuyển khâu
 function useChain(){ return S.config.sizingModel!=='trongoi'; } // mặc định dùng dây chuyền
-// NĂNG LỰC DÂY CHUYỀN thực tế (đơn/ca) = throughput mô phỏng × (1 - đệm an toàn)
-function chainCap(team){ return teamThroughput(team,true)*(1-chainBuffer()); }
-// team có ĐỦ sức làm 'target' đơn (đã tính đệm) ko? — rẻ hơn throughput: chỉ 1 lần mô phỏng ở mức target/(1-đệm)
-function chainEnough(team,target){ return target<=1e-6 || coverageOf(target/(1-chainBuffer()),team,true).fully; }
+// ===== MÔ HÌNH PIPELINE: MAX throughput, phân người theo LỢI THẾ SO SÁNH (cắm người mạnh vào nút thắt) =====
+function effRateOf(p,st){ const v=p.skills[st.key]||0; return v>0?v:floorRateOf(st); } // tốc độ thực (sàn 5; khâu bấm hàng loạt = full)
+// Phân được giờ sao cho MỌI khâu xử lý N đơn trong giờ từng người? Greedy: khâu ít năng lực nhất (nút thắt) xử lý trước, dùng người giỏi khâu đó.
+function pipelineFeasible(team, N, rec){
+  const stages=S.stages, n=team.length; if(!n)return rec?{ok:N<=1e-6,assign:[]}:(N<=1e-6);
+  const rem=team.map(p=>p.hours||0); const assign=rec?team.map(()=>({})):null;
+  const tot=stages.map(st=>team.reduce((s,p)=>s+effRateOf(p,st)*(p.hours||0),0)); // tổng năng lực tối đa mỗi khâu
+  const order=stages.map((_,ki)=>ki).sort((a,b)=>tot[a]-tot[b]);
+  for(const ki of order){ const st=stages[ki]; let need=N;
+    const pi=team.map((p,i)=>i).sort((a,b)=>effRateOf(team[b],st)-effRateOf(team[a],st));
+    for(const i of pi){ if(rem[i]<=1e-9)continue; const rt=effRateOf(team[i],st); if(rt<=0)continue;
+      const t=Math.min(rem[i], need/rt); need-=t*rt; rem[i]-=t; if(rec&&t>1e-6)assign[i][st.key]=(assign[i][st.key]||0)+t;
+      if(need<=1e-6)break; }
+    if(need>1e-6) return rec?{ok:false,assign:null}:false;
+  }
+  return rec?{ok:true,assign}:true;
+}
+// max đơn/ca + bản phân giờ {id:{khâu:giờ}}
+function pipelineThroughput(team){
+  if(!team.length)return {cap:0,assign:{}};
+  let maxR=0; team.forEach(p=>S.stages.forEach(st=>{const v=effRateOf(p,st); if(v>maxR)maxR=v;}));
+  let lo=0, hi=team.reduce((a,p)=>a+(p.hours||0),0)*maxR+1;
+  for(let i=0;i<28;i++){ const mid=(lo+hi)/2; if(pipelineFeasible(team,mid))lo=mid; else hi=mid; }
+  const r=pipelineFeasible(team,lo,true); const assign={};
+  if(r&&r.assign)team.forEach((p,i)=>{ assign[p.id]=r.assign[i]; });
+  return {cap:lo, assign};
+}
+// NĂNG LỰC DÂY CHUYỀN thực tế (đơn/ca) = pipeline × (1 - đệm an toàn)
+function chainCap(team){ return pipelineThroughput(team).cap*(1-chainBuffer()); }
+// team có ĐỦ sức làm 'target' đơn (đã tính đệm) ko? — 1 lần kiểm khả thi ở mức target/(1-đệm)
+function chainEnough(team,target){ return target<=1e-6 || pipelineFeasible(team, target/(1-chainBuffer())); }
 
 /* ---------- DATE HELPERS ---------- */
 // fmt theo NGÀY ĐỊA PHƯƠNG (khớp với parse) — tránh lệch 1 ngày do toISOString dùng giờ UTC
@@ -1562,17 +1589,16 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
     let weak=[], roles={}, assignH={}, gap=[], bnKey=null, slowKeys=[], slowConflict=[], slowReco=null;
     if(ca!=='Tối'&&members.length&&N>0){
       const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)}));
-      // mô phỏng vai trò chạy tới NĂNG LỰC TỐI ĐA của team (không dừng ở chỉ tiêu) -> KHÔNG ai ngồi không: người rảnh tự dồn vào khâu nghẽn
-      const covN=Math.max(tgt(ca), cChain/(1-chainBuffer()));
-      const covCa=coverageOf(Math.max(1,covN), mm, true); // CÓ sàn: mô phỏng phản ánh việc dồn người (kể cả chưa thạo) vào khâu nghẽn
+      // PHÂN GIỜ TỐI ƯU theo pipeline: cắm người MẠNH nhất vào khâu NGHẼN (Gói hộp), phần còn lại rải theo lợi thế -> tổng đơn cao nhất
+      const pt=pipelineThroughput(mm);
       gap=S.stages.filter(s=>!members.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key); // khâu KHÔNG ai biết làm thật -> cảnh báo
-      bnKey=covCa.bottleneck.key;
-      S.stages.forEach(s=>{const rt=covCa.stageRate[s.key]||0; if(gap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
       slowKeys=S.stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu CHẬM nhất (nút thắt) — vd Gói hộp, Bọc xóc
-      // VAI TRÒ = BẢN PHÂN GIỜ THỰC TẾ của mô phỏng dây chuyền: khâu nào người này bỏ ≥0.15h coi là LÀM khâu đó.
-      // Nhờ vậy người làm khâu NHANH xong (vd Tít) tự hiện sang phụ khâu CHẬM/NGHẼN — đúng cách kho chạy.
+      bnKey=slowKeys[0];
+      const ptRate={}; S.stages.forEach(s=>{ let hw=0,h=0; members.forEach(p=>{const t=(pt.assign[p.id]||{})[s.key]||0; if(t>0){hw+=t*effRateOf({skills:boostSkills(p)},s);h+=t;}}); ptRate[s.key]=h>0?hw/h:0; });
+      S.stages.forEach(s=>{const rt=ptRate[s.key]||0; if(gap.includes(s.key)||(rt>0&&rt<0.6*s.rate))weak.push(s.key);});
+      // VAI TRÒ = BẢN PHÂN GIỜ pipeline: khâu nào người này bỏ ≥18' coi là LÀM khâu đó (người mạnh hiện đúng ở khâu nghẽn).
       const MINH=0.3; // ≥18 phút mới coi là 1 khâu (lọc mẩu vụn), mỗi người tối đa 3 khâu chính cho gọn
-      members.forEach(p=>{ const a=covCa.assign[p.id]||{}; assignH[p.id]=a; roles[p.id]=S.stages.map(s=>s.key).filter(k=>(a[k]||0)>=MINH).sort((x,y)=>(a[y]||0)-(a[x]||0)).slice(0,3); });
+      members.forEach(p=>{ const a=pt.assign[p.id]||{}; assignH[p.id]=a; roles[p.id]=S.stages.map(s=>s.key).filter(k=>(a[k]||0)>=MINH).sort((x,y)=>(a[y]||0)-(a[x]||0)).slice(0,3); });
       members.forEach(p=>{ if(trainEff[p.id]&&!roles[p.id].includes(trainEff[p.id]))roles[p.id].push(trainEff[p.id]); });
       // VÉT: ai chưa có giờ (rảnh) -> lót khâu nghẽn; khâu nào chưa ai trong vai trò -> cử người biết (hoặc học việc) để ko bỏ trống
       members.forEach(p=>{ if(roles[p.id].length)return; const k=slowKeys.find(k=>(p.skills[k]||0)>0)||slowKeys[0]||bnKey; if(k){roles[p.id].push(k); if((p.skills[k]||0)<benchmark(k)*(S.config.trainAssist||0.35))trainEff[p.id]=k;} });
@@ -1911,23 +1937,17 @@ function renderMonthView(){
 function wavePlaybook(cs){
   const mem=(cs&&cs.members)||[]; const M=mem.length; if(M<1) return '';
   const sk=(p,k)=>p.skills[k]||0; const nm=p=>esc(p.name);
-  const rate=k=>{const s=S.stages.find(x=>x.key===k);return s?s.rate:100;};
   const byMost=(arr,k)=>arr.slice().sort((a,b)=>sk(b,k)-sk(a,k));
   const list=arr=>arr.map(nm).join(', ')||'—';
   const caH=S.config.caHours||4; const t=f=>{const m=Math.round(caH*60*f);return m===0?'Đầu ca':('+'+m+"'");};
-  const inv=S.stages.reduce((a,s)=>a+1/s.rate,0);
-  const tgtP=k=>M*(1/rate(k))/inv;
-  if(M<3){ // ca quá ít người: gộp đơn giản
+  // ĐỘI CUỐI-CA lấy thẳng từ phân giờ pipeline (cs.roles) -> KHỚP bảng khâu phía trên
+  const inStage=k=>mem.filter(p=>((cs.roles&&cs.roles[p.id])||[]).includes(k)).sort((a,b)=>((cs.assignH[b.id]||{})[k]||0)-((cs.assignH[a.id]||{})[k]||0));
+  if(M<3){
     return `<details class="wave"><summary>🌊 Kịch bản chạy ca (gợi ý)</summary><div class="wstep"><span class="wt">${t(0)}</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></details>`;
   }
-  const nGoi=Math.max(1,Math.min(M-2,Math.round(tgtP('goihop'))));
-  const nBoc=Math.max(1,Math.min(M-nGoi-1,Math.round(tgtP('bocxoc'))));
-  const xacP=byMost(mem,'xacnhan')[0];
-  const goiTeam=byMost(mem,'goihop').slice(0,nGoi);
-  let pool=mem.filter(p=>!goiTeam.includes(p));
-  const bocTeam=byMost(pool,'bocxoc').slice(0,nBoc); pool=pool.filter(p=>!bocTeam.includes(p));
-  const bitP=byMost(pool,'bitdau')[0]; const titP=byMost(pool.filter(p=>p!==bitP),'tit')[0];
-  const backFast=[bitP,titP].filter(Boolean);
+  const xacP=inStage('xacnhan')[0]||byMost(mem,'xacnhan')[0];
+  const goiTeam=inStage('goihop'); const bocTeam=inStage('bocxoc');
+  const bit=inStage('bitdau'), tit=inStage('tit'); const seen=new Set(); const backFast=[...bit,...tit].filter(p=>!seen.has(p.id)&&seen.add(p.id)).slice(0,2);
   const pickers=mem.filter(p=>p!==xacP);                                   // người nhặt đầu ca (trừ người xác nhận)
   const keepNhat=byMost(pickers,'nhat').slice(0,Math.max(1,Math.round(pickers.length/2))); // giữ ~50% giỏi nhặt
   const toKiem=pickers.filter(p=>!keepNhat.includes(p));
@@ -2045,7 +2065,7 @@ function renderWeekView(){
       <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${r.ord.selected.length}</b> người · đăng ký <b>${totalReg}</b></div>
-      ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">${esc((bossStaff()||{}).name||'')} xuất trận cân cả team — ${esc(r.summon)}</span></div>`:''}
+      ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">Xuất trận cân team — ${esc(r.summon)}</span></div>`:''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       ${caSection}
       ${stagesHtml}
