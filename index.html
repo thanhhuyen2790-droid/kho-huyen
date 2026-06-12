@@ -476,6 +476,11 @@
         <div><label class="fld">Cách tính số người</label><select id="cf-model" onchange="S.config.sizingModel=this.value;invalidateSolver();saveAll();renderAll()"><option value="chain">Dây chuyền (dồn người vào khâu nghẽn — ít người hơn)</option><option value="trongoi">Trọn gói (mỗi người làm trọn đơn)</option></select><small class="hint">Dây chuyền = chuyên môn hoá theo khâu, phản ánh đúng cách kho chạy</small></div>
         <div><label class="fld">Đệm an toàn dây chuyền (%)</label><input id="cf-buffer" type="number" step="1" min="0" max="40" onchange="S.config.chainBuffer=Math.max(0,Math.min(40,+this.value||12));invalidateSolver();saveAll();renderAll()"><small class="hint">Trừ hao phí chuyển khâu. Cao = chắc chắn hơn (hay ra nhiều người hơn)</small></div>
       </div>
+      <div class="row" style="margin-top:8px;background:#fff4e0;padding:10px;border-radius:10px">
+        <div style="display:flex;align-items:flex-end"><label style="font-size:12.5px;cursor:pointer;font-weight:600"><input type="checkbox" id="cf-boss-on" onchange="S.config.bossEnabled=this.checked;saveAll();renderAll()"> 👑 Bật <b>Bà Chúa Kho</b> (quản lý cân team)</label></div>
+        <div><label class="fld">Tên quản lý (mật danh: Bà Chúa Kho)</label><input id="cf-boss-name" type="text" onchange="S.config.bossName=this.value||'Bùi Thanh Huyền';saveAll();renderAll()"><small class="hint">Full skill = 2× chuẩn mọi khâu · KHÔNG nằm trong danh sách nhân sự</small></div>
+        <div><label class="fld">Gọi khi thiếu trên (đơn)</label><input id="cf-boss-thr" type="number" step="5" min="0" onchange="S.config.bossGap=Math.max(0,+this.value||50);saveAll();renderAll()"><small class="hint">Sau phân bổ còn thiếu quá số ĐƠN này thì triệu hồi (mặc định 50 đơn)</small></div>
+      </div>
       <p class="note" style="margin-top:14px">Năng lực mỗi người ở từng khâu = <b>Tốc độ khâu × (điểm kỹ năng ÷ 10) × số giờ làm</b>. Mỗi đơn phải đi qua hết các khâu, nên <b>khâu chậm/yếu nhất là nút thắt</b>.</p>
     </div>
     <div class="card">
@@ -509,7 +514,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-30 (👑 Bà Chúa Kho — triệu hồi ngày đông)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-32 (👑 gọi Bà Chúa Kho khi thiếu >50 đơn)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -538,7 +543,7 @@ function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>
 
 function defaultState(){
   return {
-    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:12},
+    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:12,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -850,9 +855,6 @@ function addStaff(){
   saveAll();renderSkillMatrix();renderRegTable();
 }
 function delStaff(i){if(confirm('Xoá nhân sự "'+(S.staff[i]&&S.staff[i].name)+'"?')){S.staff.splice(i,1);saveAll();renderSkillMatrix();renderRegTable()}}
-function setBoss(i,on){ const p=S.staff[i]; if(!p)return; p.boss=on;
-  if(on){ S.staff.forEach((x,j)=>{if(j!==i)x.boss=false;}); p.type='FT'; S.stages.forEach(s=>p.skills[s.key]=s.rate*2); const sr=Math.round(soloRate(p.skills)); if(!(p.prod>=sr))p.prod=sr; } // full skill = 2× chuẩn
-  invalidateSolver&&invalidateSolver(); saveAll(); renderSkillMatrix(); renderRegTable(); }
 function renderStaff(){ /* gộp vào renderSkillMatrix */ }
 function skillCellBg(v,bm){v=+v||0;const r=bm>0?v/bm:0;
   if(v<=0)return '#fbe3e1'; if(r<0.4)return '#fde3c8'; if(r<0.7)return '#fdf3d0'; if(r<1)return '#e7f3da'; return '#d3efde';}
@@ -876,8 +878,8 @@ function renderSkillMatrix(){
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
     <td style="text-align:center;padding:3px;background:#eef4ff"><input type="number" min="0" value="${p.prod!=null?p.prod:20}" title="Tốc độ trọn gói (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ. TB 20." style="width:64px;text-align:center;font-weight:700;border:1px solid #9bbcf0;background:#fff" onchange="setProd(${i},this.value)"></td>
     ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
-    <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()">${p.boss?'<br><span title="Bà Chúa Kho" style="font-size:13px">👑</span>':''}</td>
-    <td style="white-space:nowrap"><label title="Quản lý 'Bà Chúa Kho' — full skill, chỉ cân team ngày đông/đơn tồn >40%" style="font-size:10.5px;cursor:pointer"><input type="checkbox" ${p.boss?'checked':''} onchange="setBoss(${i},this.checked)"> 👑Quản lý</label> <button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
+    <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
+    <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
   t.innerHTML=head+'<tbody>'+body+'</tbody>';
 }
@@ -941,9 +943,11 @@ function dayPeople(ds){
 }
 // ===== BÀ CHÚA KHO (nhân sự quản lý, chỉ triệu hồi khi ngày đông / đơn tồn >40%) =====
 const BOSS_ALIAS='Bà Chúa Kho';
-function bossStaff(){ return S.staff.find(s=>s.active&&s.boss); }
-function bossSkills(){ const sk={}; S.stages.forEach(s=>sk[s.key]=s.rate*2); return sk; } // full skill = 2× chuẩn mỗi khâu
-function bossEntry(b){ return {id:b.id,name:BOSS_ALIAS,realName:b.name,type:'FT',prod:Math.max(b.prod||0,Math.round(soloRate(bossSkills()))),cas:2,caList:['Sáng','Chiều'],hours:2*S.config.caHours,skills:bossSkills(),boss:true}; }
+// Bà Chúa Kho = nhân sự QUẢN LÝ đặc biệt, KHÔNG nằm trong danh sách nhân sự, cấu hình riêng ở Cài đặt. Full skill = 2× chuẩn mỗi khâu.
+function bossStaff(){ if(S.config&&S.config.bossEnabled===false)return null; return {id:'__boss__', name:(S.config&&S.config.bossName)||'Bùi Thanh Huyền', boss:true}; }
+function bossSkills(){ const sk={}; S.stages.forEach(s=>sk[s.key]=s.rate*2); return sk; }
+function bossEntry(b){ return {id:'__boss__',name:BOSS_ALIAS,realName:b.name,type:'FT',prod:Math.round(soloRate(bossSkills())),cas:2,caList:['Sáng','Chiều'],hours:2*S.config.caHours,skills:bossSkills(),boss:true}; }
+function bossGap(){ return Math.max(0,(S.config&&S.config.bossGap!=null?+S.config.bossGap:50)); } // thiếu trên bao nhiêu ĐƠN thì gọi (mặc định 50 đơn)
 // SÀN tốc độ: người chưa có skill khâu k vẫn có thể "đẩy vào" — khâu bấm hàng loạt (rate≥500, vd Xác nhận) ai cũng nhanh; khâu thủ công thì 5 đơn/h
 const FLOOR_RATE=5;
 function floorRateOf(st){ return st && st.rate>=500 ? st.rate : FLOOR_RATE; }
@@ -1609,13 +1613,11 @@ function planDay(d, acc){
   const busy = (t==='peak'||t==='mid') || rolledOrders(d)>0.5;
   const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
   let sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
-  // 👑 TRIỆU HỒI BÀ CHÚA KHO: ngày ĐÔNG (đầu tuần/15-25/trùng) hoặc đơn TỒN >40% do thiếu người
+  // 👑 TRIỆU HỒI BÀ CHÚA KHO: sau khi phân bổ mà vẫn THIẾU đơn trên ngưỡng (mặc định >20%) -> gọi gánh
   let summon=null; const boss=bossStaff();
-  if(boss){
-    const cap0=useChain()?sd.chainCap:sd.ordersCap; const shortPct=orders>0?(orders-cap0)/orders:0;
-    if(busy) summon='ngày đông — dồn toàn lực';
-    else if(shortPct>0.40) summon='thiếu người, đơn tồn >40%';
-    if(summon){ pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); } // gồm Bà Chúa Kho, chạy greedy để ép vào team
+  if(boss && orders>0){
+    const cap0=useChain()?sd.chainCap:sd.ordersCap; const gap=orders-cap0;
+    if(gap>bossGap()){ summon='thiếu '+Math.round(gap)+' đơn'; pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); } // gồm Bà Chúa Kho, greedy để ép vào team
   }
   const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:(p.pca?p.pca.length:p.caList.length)*S.config.caHours}))); // nhận xét kỹ năng cấp ngày (theo ca thực làm)
   const dayCapMain=useChain()?sd.chainCap:sd.ordersCap; // năng lực ngày dùng để xét ĐỦ/THIẾU
@@ -2144,6 +2146,9 @@ function renderAll(){
   const csl=document.getElementById('cf-slack'); if(csl)csl.value=S.config.caSlackPct!=null?S.config.caSlackPct:3;
   const cmd=document.getElementById('cf-model'); if(cmd)cmd.value=S.config.sizingModel||'chain';
   const cbf=document.getElementById('cf-buffer'); if(cbf)cbf.value=S.config.chainBuffer!=null?S.config.chainBuffer:12;
+  const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
+  const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
+  const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
   fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();
   populateUserStaff();renderReg();updateNavBadge();
 }
