@@ -514,7 +514,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-32 (👑 gọi Bà Chúa Kho khi thiếu >50 đơn)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-33 (sửa lỗi crash bảng khi triệu hồi Bà Chúa Kho)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1645,8 +1645,8 @@ function computeWeek(weekStartStr){
   for(const d of dates){
     const r=planDay(d, acc);
     const used=new Set();
-    r.ord.selected.forEach(p=>{used.add(p.id);acc[p.id]+=p.cas;});
-    r.crab.selected.forEach(p=>{acc[p.id]+=p.cas;});
+    r.ord.selected.forEach(p=>{used.add(p.id);acc[p.id]=(acc[p.id]||0)+p.cas;}); // (acc||0) phòng id lạ như Bà Chúa Kho
+    r.crab.selected.forEach(p=>{acc[p.id]=(acc[p.id]||0)+p.cas;});
     r.used=used; r.reqPeople=peopleNeeded(r.orders);
     r.status={closed:'closed',ok:'ok',surplus:'warn',short_skill:'warn',short_people:'bad',short_crab:'bad',short_both:'bad'}[r.kind];
     r.sug=buildDaySug(r, acc);
@@ -1754,11 +1754,12 @@ function planMonth(year,month){
     const pool=dayPeople(ds); if(!pool.length)continue;
     const r=planDay(d, accCa);
     const asg=r.ord.cov&&r.ord.cov.assign||{};
-    r.ord.selected.forEach(p=>{
-      acc[p.id].ca+=p.cas; acc[p.id].days+=1; accCa[p.id]+=p.cas;
+    const ensure=id=>{ if(!acc[id]){acc[id]={ca:0,days:0,orders:0}; accCa[id]=accCa[id]||0;} }; // id lạ (vd Bà Chúa Kho __boss__) -> khởi tạo
+    r.ord.selected.forEach(p=>{ ensure(p.id);
+      acc[p.id].ca+=p.cas; acc[p.id].days+=1; accCa[p.id]=(accCa[p.id]||0)+p.cas;
       const a=asg[p.id]||{}; let o=0; for(const k in a)o+=a[k]*(p.skills[k]||0); acc[p.id].orders+=o; // đơn thực xử lý ở các khâu được phân
     });
-    r.crab.selected.forEach(p=>{ acc[p.id].ca+=p.cas; acc[p.id].days+=1; accCa[p.id]+=p.cas; }); // người làm Crabthing cũng tính ngày công
+    r.crab.selected.forEach(p=>{ ensure(p.id); acc[p.id].ca+=p.cas; acc[p.id].days+=1; accCa[p.id]=(accCa[p.id]||0)+p.cas; }); // người làm Crabthing cũng tính ngày công
   }
   return acc;
 }
