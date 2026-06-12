@@ -516,7 +516,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-41 (kịch bản theo tốc độ chỉ tiêu mỗi khâu — dồn người có cơ sở)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-43 (Bà Chúa Kho làm Crabthing khi thiếu người crab)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1645,11 +1645,15 @@ function planDay(d, acc){
   const busy = (t==='peak'||t==='mid') || rolledOrders(d)>0.5;
   const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
   let sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
-  // 👑 TRIỆU HỒI BÀ CHÚA KHO: sau khi phân bổ mà vẫn THIẾU đơn trên ngưỡng (mặc định >20%) -> gọi gánh
-  let summon=null; const boss=bossStaff();
-  if(boss && orders>0){
+  // 👑 TRIỆU HỒI BÀ CHÚA KHO: thiếu ĐƠN trên ngưỡng (mặc định >50 đơn) HOẶC thiếu người làm CRABTHING
+  let summon=null, bossCrab=false; const boss=bossStaff();
+  if(boss){
     const cap0=useChain()?sd.chainCap:sd.ordersCap; const gap=orders-cap0;
-    if(gap>bossGap()){ summon='thiếu '+Math.round(gap)+' đơn'; pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); } // gồm Bà Chúa Kho, greedy để ép vào team
+    if(orders>0 && gap>bossGap()){
+      summon='thiếu '+Math.round(gap)+' đơn'; pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); // cô ấy gánh ĐƠN full sức (giải phóng người khác làm crab nếu có)
+    } else if(sd.crabShort){
+      summon='thiếu người làm Crabthing'; sd.crabShort=false; sd.crabCap=crabD; bossCrab=true;             // ngày đủ đơn -> boss làm crab cả 2 ca cho đủ
+    }
   }
   const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:(p.pca?p.pca.length:p.caList.length)*S.config.caHours}))); // nhận xét kỹ năng cấp ngày (theo ca thực làm)
   const dayCapMain=useChain()?sd.chainCap:sd.ordersCap; // năng lực ngày dùng để xét ĐỦ/THIẾU
@@ -1665,7 +1669,7 @@ function planDay(d, acc){
   else kind='ok';
   return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,summon,
     ord:{selected:sd.selected,status:ordStatus,cov,capacity:sd.ordersCap,capacityChain:sd.chainCap,capacityMain:dayCapMain},
-    crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap},
+    crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap,boss:bossCrab},
     finalRest:sd.rest,kind};
 }
 // tính 1 tuần (dùng CHUNG cho cả xem Tuần và tổng quan Tháng để 2 nơi luôn khớp nhau)
@@ -2063,7 +2067,7 @@ function renderWeekView(){
       const wave = ca!=='Tối' ? wavePlaybook(cs) : '';
       return `<div class="caSec">${header}${perf}${timeNote}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${wave}${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
     }).join('') : '';
-    const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:'';
+    const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:(r.crab&&r.crab.boss)?`<div class="metric" style="color:#b8860b"><b>🦀 Crabthing:</b> 👑 Bà Chúa Kho lo (${Math.round(r.crabD)} SKU) — đủ</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
     const stagesHtml = (r.type!=='closed') ? `<div class="stages"><div class="stlegend">Tốc độ team theo khâu — đơn/h · độ phủ</div>${S.stages.map(s=>{
         const rt=cov.stageRate[s.key]||0;
