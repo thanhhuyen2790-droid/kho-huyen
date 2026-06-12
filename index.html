@@ -117,6 +117,7 @@
   .wave>summary{cursor:pointer;font-weight:700;color:#274690}
   .wstep{margin-top:6px;padding-left:4px;color:#26314d;line-height:1.5}
   .wt{display:inline-block;min-width:46px;font-weight:700;color:#2f6df6;background:#dde8ff;border-radius:5px;padding:0 5px;margin-right:5px;font-size:10.5px;text-align:center}
+  .wnote{margin-top:8px;border-top:1px dashed #cdd9f5;padding-top:7px;font-size:11px;color:#8a4b2d;line-height:1.5}
   @keyframes bossPulse{0%,100%{box-shadow:0 0 0 0 rgba(212,83,126,.5);transform:scale(1)}50%{box-shadow:0 0 14px 3px rgba(245,180,40,.7);transform:scale(1.015)}}
   .bosscall{margin:7px 0;text-align:center;background:linear-gradient(100deg,#fff4e0,#ffe3ef,#f3e8ff);border:1.5px solid #f0b429;border-radius:10px;padding:8px 10px;font-size:12.5px;color:#8a2d52;animation:bossPulse 1.8s ease-in-out infinite}
   .bc-sub{font-size:11px;color:#6a3b1f;font-weight:600}
@@ -515,7 +516,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-37 (crab hỗ trợ đơn cả 2 ca)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-41 (kịch bản theo tốc độ chỉ tiêu mỗi khâu — dồn người có cơ sở)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1723,6 +1724,7 @@ function headcountText(r){
 }
 function ordersComment(r, acc){
   const sel=r.ord, cov=sel.cov, ds=r.ds;
+  const selN=sel.selected.filter(p=>!p.boss).length, bossN=sel.selected.some(p=>p.boss)?' +👑':''; // KHÔNG đếm Bà Chúa Kho vào số người đăng ký
   if(sel.status==='ok'||sel.status==='surplus'){
     const extra=[];
     ['Sáng','Chiều'].forEach(ca=>{const cs=r.caStat&&r.caStat[ca];if(!cs)return;
@@ -1730,18 +1732,18 @@ function ordersComment(r, acc){
       if(cs.st==='bù')extra.push(`ca ${ca.toLowerCase()} đẩy hiệu suất gánh +${Math.round(cs.quota-cs.need)} đơn bù ca kia`);
     });
     const sg=r.caStat?` (sáng giao ~${Math.round(r.caStat['Sáng'].quota)}, chiều ~${Math.round(r.caStat['Chiều'].quota)} đơn)`:'';
-    return `🟢 <b>Chạy đơn:</b> đủ ${sel.selected.length} người${sg}.${extra.length?' '+extra.join('; ')+'.':''}`;
+    return `🟢 <b>Chạy đơn:</b> đủ ${selN} người${bossN}${sg}.${extra.length?' '+extra.join('; ')+'.':''}`;
   }
   if(sel.status==='short_skill'){
     if(cov.skillGap.length){
       const recs=cov.skillGap.map(k=>{const c=notRegistered(ds).filter(s=>(s.skills[k]||0)>0).sort((a,b)=>(b.skills[k]||0)-(a.skills[k]||0))[0];return c?`${stageName(k)} ⇐ <b>${c.name}</b>`:`${stageName(k)} (chưa ai biết — đào tạo)`;});
-      return `🟡 <b>Chạy đơn:</b> đủ ${sel.selected.length} người nhưng CHƯA AI LÀM ĐƯỢC: ${cov.skillGap.map(stageName).join(', ')}. Bổ sung: ${recs.join('; ')}.`;
+      return `🟡 <b>Chạy đơn:</b> đủ ${selN} người${bossN} nhưng CHƯA AI LÀM ĐƯỢC: ${cov.skillGap.map(stageName).join(', ')}. Bổ sung: ${recs.join('; ')}.`;
     }
     const weak=weakestStage(cov);
     const weakList=[...S.stages].sort((a,b)=>(cov.stageRate[a.key]||0)-(cov.stageRate[b.key]||0)).slice(0,2).map(s=>`${s.name} (${Math.round(cov.stageRate[s.key]||0)} đơn/h)`);
     // người đủ skill khâu yếu, trong đó ưu tiên ÍT giờ làm
     const c=notRegistered(ds).filter(s=>(s.skills[weak.key]||0)>=4).sort((a,b)=>((acc[a.id]||0)-(acc[b.id]||0))||((b.skills[weak.key]||0)-(a.skills[weak.key]||0)))[0];
-    return `🟡 <b>Chạy đơn:</b> đủ ${sel.selected.length} người nhưng mới ~${Math.round(cov.coverage[weak.key]*100)}% đơn do lệch kỹ năng. Yếu nhất: <b>${weakList.join(', ')}</b>. ${c?`Nên thêm <b>${c.name}</b> (đủ skill ${weak.name}, đang ít giờ làm).`:'Nên đào tạo các khâu này.'}`;
+    return `🟡 <b>Chạy đơn:</b> đủ ${selN} người${bossN} nhưng mới ~${Math.round(cov.coverage[weak.key]*100)}% đơn do lệch kỹ năng. Yếu nhất: <b>${weakList.join(', ')}</b>. ${c?`Nên thêm <b>${c.name}</b> (đủ skill ${weak.name}, đang ít giờ làm).`:'Nên đào tạo các khâu này.'}`;
   }
   // short_people — nêu rõ thiếu Ở CA NÀO, gợi ý người ĐỦ SKILL còn thiếu + ưu tiên ít giờ làm
   const caLines=[];
@@ -1950,17 +1952,26 @@ function wavePlaybook(cs){
   if(M<3){
     return `<details class="wave"><summary>🌊 Kịch bản chạy ca (gợi ý)</summary><div class="wstep"><span class="wt">${t(0)}</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></details>`;
   }
+  const need=Math.round(cs.need||0); const targetR=caH>0?Math.round(need/caH):0; // CHỈ TIÊU TỐC ĐỘ mỗi khâu (đơn/h)
+  const stObj=k=>S.stages.find(s=>s.key===k)||{rate:100,name:k};
+  const rAt=(ppl,k)=>Math.round(ppl.reduce((a,p)=>a+(p.skills[k]>0?p.skills[k]:floorRateOf(stObj(k))),0)); // tốc độ team cộng lại ở khâu này
   const xacP=inStage('xacnhan')[0]||byMost(mem,'xacnhan')[0];
-  const goiTeam=inStage('goihop'); const bocTeam=inStage('bocxoc');
-  const bit=inStage('bitdau'), tit=inStage('tit'); const seen=new Set(); const backFast=[...bit,...tit].filter(p=>!seen.has(p.id)&&seen.add(p.id)).slice(0,2);
-  const pickers=mem.filter(p=>p!==xacP);                                   // người nhặt đầu ca (trừ người xác nhận)
-  const keepNhat=byMost(pickers,'nhat').slice(0,Math.max(1,Math.round(pickers.length/2))); // giữ ~50% giỏi nhặt
-  const toKiem=pickers.filter(p=>!keepNhat.includes(p));
-  return `<details class="wave"><summary>🌊 Kịch bản chạy ca (gợi ý luân chuyển người)</summary>`+
-    `<div class="wstep"><span class="wt">${t(0)}</span> 🖥️ <b>Xác nhận:</b> ${nm(xacP)} <small class="hint">(đến sớm, 1 máy)</small> · 📦 <b>Nhặt đơn:</b> tất cả còn lại — ${list(pickers)}</div>`+
-    `<div class="wstep"><span class="wt">${t(0.1)}</span> Đã có hàng để kiểm: giữ <b>${list(keepNhat)}</b> nhặt tiếp; <b>${list(toKiem)}</b> + (${nm(xacP)} xác nhận xong) → <b>Kiểm đơn</b></div>`+
-    `<div class="wstep"><span class="wt">${t(0.35)}</span> Dồn xuống đóng gói (khâu chậm trước): 🔴 <b>Gói hộp:</b> ${list(goiTeam)} · <b>Bọc xóc:</b> ${list(bocTeam)} · <b>Bịt đầu/Tít:</b> ${backFast.length?list(backFast):'—'}</div>`+
-    `<div class="wstep"><span class="wt">${t(0.7)}</span> Cuối ca vét đơn: dồn tối đa vào 🔴 <b>Gói hộp</b> (${list(goiTeam)} + ai xong khâu nhanh nhảy vào); Bọc/Bịt/Tít xử nốt buffer còn lại</div>`+
+  const xacR=(xacP.skills.xacnhan>0?xacP.skills.xacnhan:floorRateOf(stObj('xacnhan')));
+  const confirmMin=xacR>0?Math.max(1,Math.round(need/xacR*60)):0; // phút xác nhận xong cả ca
+  const kiem=inStage('kiem'), boc=inStage('bocxoc'), goi=inStage('goihop'), bit=inStage('bitdau'), tit=inStage('tit'), nhat=inStage('nhat').length?inStage('nhat'):mem.filter(p=>p!==xacP);
+  // 1 dòng cho mỗi khâu: người + tốc độ tổng vs chỉ tiêu
+  const line=(icon,name,key,ppl,bn)=>{ if(!ppl.length)return ''; const r=rAt(ppl,key); const ok=r>=targetR;
+    return `<div class="wstep">${icon} <b>${name}${bn?' 🔴':''}:</b> ${list(ppl)} — tốc độ <b>${r}</b> đơn/h ${ok?`<span style="color:#0f6e56">(đạt ≥${targetR})</span>`:`<span style="color:#d4537e">(&lt;${targetR}, dồn thêm người)</span>`}</div>`; };
+  return `<details class="wave"><summary>🌊 Kịch bản chạy ca (dồn người theo tốc độ chỉ tiêu)</summary>`+
+    `<div class="wstep">🎯 Mỗi khâu cần đạt <b>~${targetR} đơn/h</b> (${need} đơn ÷ ${caH}h) thì mới kịp chỉ tiêu ca.</div>`+
+    `<div class="wstep"><span class="wt">${t(0)}</span> 🖥️ <b>Xác nhận:</b> ${nm(xacP)} (${Math.round(xacR)} đơn/h) → xong ${need} đơn trong <b>~${confirmMin}'</b>. Rồi <b>cả team</b> nhảy vào Nhặt.</div>`+
+    line('📦','Nhặt đơn','nhat',nhat)+
+    line('🔎','Kiểm đơn','kiem',kiem)+
+    line('📦','Vào bọc xóc','bocxoc',boc,true)+
+    line('🎁','Gói hộp','goihop',goi,true)+
+    line('🏷️','Bịt đầu','bitdau',bit)+
+    line('✅','Tít đơn','tit',tit)+
+    `<div class="wnote">⚙️ <b>Cách dồn người:</b> giữ vừa đủ người để mỗi khâu đạt ~${targetR} đơn/h. Khâu nào tốc độ team VƯỢT ${targetR} (dư) → cắt người dư sang khâu sau; khâu chưa đạt (nhất là <b>Gói hộp, Bọc xóc</b>) → dồn thêm người vào cho đơn trôi. Người xong khâu nhanh tự sang phụ khâu chậm — không để khâu nào nghẽn làm đơn ùn.</div>`+
     `</details>`;
 }
 /* ---- chi tiết TUẦN ---- */
@@ -1986,7 +1997,9 @@ function renderWeekView(){
     const sb=hc.cls, st=hc.text;
     const cov=r.ord.cov;
     const weak=(r.ord.status==='short_skill'||r.ord.status==='short_people')?weakestStage(cov):null;
-    const totalReg=r.ord.selected.length+r.crab.selected.length+r.finalRest.length;
+    const bossIn=r.ord.selected.some(p=>p.boss); // Bà Chúa Kho ko nằm trong đăng ký -> tách riêng, ko cộng vào số người
+    const realSel=r.ord.selected.filter(p=>!p.boss).length;
+    const totalReg=realSel+r.crab.selected.filter(p=>!p.boss).length+r.finalRest.filter(p=>!p.boss).length;
     // ===== BỐ CỤC THEO CA: tiêu đề ca + trạng thái, năng suất ca, danh sách người + vị trí + thanh kỹ năng =====
     const trainMap=(r.sd&&r.sd.trainEff)||{};
     const reg=S.reg[r.ds]||{};
@@ -1998,7 +2011,8 @@ function renderWeekView(){
       if(ca==='Tối'&&!cs.members.length&&!cs.crab.length)return '';
       const icon=ca==='Sáng'?'☀️':ca==='Chiều'?'🌤️':'🌙';
       const b=cs.st==='thiếu'?['b-bad','THIẾU +'+cs.morePeople]:cs.st==='bù'?['b-mid','ĐẨY BÙ']:cs.st==='đủ'?['b-ok','ĐẠT']:['b-normal','HỖ TRỢ'];
-      const header=`<div class="caHead">${icon} <b>CA ${ca.toUpperCase()}</b> — ${cs.members.length+cs.crab.length} người <span class="badge ${b[0]}">${b[1]}</span></div>`;
+      const caBossIn=cs.members.some(p=>p.boss); const caReal=cs.members.filter(p=>!p.boss).length+cs.crab.length;
+      const header=`<div class="caHead">${icon} <b>CA ${ca.toUpperCase()}</b> — ${caReal} người${caBossIn?' <span class="pill" style="color:#b8860b">+👑</span>':''} <span class="badge ${b[0]}">${b[1]}</span></div>`;
       const chainOn=useChain();
       const capMain=Math.round(cs.capMain!=null?cs.capMain:cs.cap), capTron=Math.round(cs.cap), tgt=Math.round(cs.need), diff=capMain-tgt, slk=Math.round(caSlack(cs.need)); // chỉ tiêu ca: Sáng 60% · Chiều 40%
       // HIỆU SUẤT THỜI GIAN: chỉ tiêu cần ít hơn năng lực -> hoàn thành SỚM hơn 1 ca (mọi người dồn sức hỗ trợ nhau)
@@ -2069,7 +2083,7 @@ function renderWeekView(){
     return `<div class="day ${r.status}${isToday?' today':''}">
       <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
-      <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${r.ord.selected.length}</b> người · đăng ký <b>${totalReg}</b></div>
+      <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${realSel}</b> người${bossIn?' <span class="pill" style="color:#b8860b" title="Bà Chúa Kho được triệu hồi, ngoài người đăng ký">+👑</span>':''} · đăng ký <b>${totalReg}</b></div>
       ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">Xuất trận cân team — ${esc(r.summon)}</span></div>`:''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       ${caSection}
