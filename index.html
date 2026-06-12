@@ -117,6 +117,9 @@
   .wave>summary{cursor:pointer;font-weight:700;color:#274690}
   .wstep{margin-top:6px;padding-left:4px;color:#26314d;line-height:1.5}
   .wt{display:inline-block;min-width:46px;font-weight:700;color:#2f6df6;background:#dde8ff;border-radius:5px;padding:0 5px;margin-right:5px;font-size:10.5px;text-align:center}
+  @keyframes bossPulse{0%,100%{box-shadow:0 0 0 0 rgba(212,83,126,.5);transform:scale(1)}50%{box-shadow:0 0 14px 3px rgba(245,180,40,.7);transform:scale(1.015)}}
+  .bosscall{margin:7px 0;text-align:center;background:linear-gradient(100deg,#fff4e0,#ffe3ef,#f3e8ff);border:1.5px solid #f0b429;border-radius:10px;padding:8px 10px;font-size:12.5px;color:#8a2d52;animation:bossPulse 1.8s ease-in-out infinite}
+  .bc-sub{font-size:11px;color:#6a3b1f;font-weight:600}
   .pvmodal{position:fixed;inset:0;background:rgba(20,20,40,.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:18px}
   .pvbox{background:#fff;border-radius:14px;max-width:1000px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)}
   .pvhead{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);font-size:15px}
@@ -506,7 +509,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-29 (kịch bản sóng luân chuyển người mỗi ca)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-30 (👑 Bà Chúa Kho — triệu hồi ngày đông)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -847,6 +850,9 @@ function addStaff(){
   saveAll();renderSkillMatrix();renderRegTable();
 }
 function delStaff(i){if(confirm('Xoá nhân sự "'+(S.staff[i]&&S.staff[i].name)+'"?')){S.staff.splice(i,1);saveAll();renderSkillMatrix();renderRegTable()}}
+function setBoss(i,on){ const p=S.staff[i]; if(!p)return; p.boss=on;
+  if(on){ S.staff.forEach((x,j)=>{if(j!==i)x.boss=false;}); p.type='FT'; S.stages.forEach(s=>p.skills[s.key]=s.rate*2); const sr=Math.round(soloRate(p.skills)); if(!(p.prod>=sr))p.prod=sr; } // full skill = 2× chuẩn
+  invalidateSolver&&invalidateSolver(); saveAll(); renderSkillMatrix(); renderRegTable(); }
 function renderStaff(){ /* gộp vào renderSkillMatrix */ }
 function skillCellBg(v,bm){v=+v||0;const r=bm>0?v/bm:0;
   if(v<=0)return '#fbe3e1'; if(r<0.4)return '#fde3c8'; if(r<0.7)return '#fdf3d0'; if(r<1)return '#e7f3da'; return '#d3efde';}
@@ -870,8 +876,8 @@ function renderSkillMatrix(){
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
     <td style="text-align:center;padding:3px;background:#eef4ff"><input type="number" min="0" value="${p.prod!=null?p.prod:20}" title="Tốc độ trọn gói (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ. TB 20." style="width:64px;text-align:center;font-weight:700;border:1px solid #9bbcf0;background:#fff" onchange="setProd(${i},this.value)"></td>
     ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
-    <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
-    <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
+    <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()">${p.boss?'<br><span title="Bà Chúa Kho" style="font-size:13px">👑</span>':''}</td>
+    <td style="white-space:nowrap"><label title="Quản lý 'Bà Chúa Kho' — full skill, chỉ cân team ngày đông/đơn tồn >40%" style="font-size:10.5px;cursor:pointer"><input type="checkbox" ${p.boss?'checked':''} onchange="setBoss(${i},this.checked)"> 👑Quản lý</label> <button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
   t.innerHTML=head+'<tbody>'+body+'</tbody>';
 }
@@ -928,11 +934,16 @@ function peopleNeeded(o){ if(o<=0)return 0; const cap=(S.config.prod||20)*S.conf
 function dayPeople(ds){
   const reg=S.reg[ds]||{}, arr=[];
   const rested=(S.restDays&&S.restDays[ds])||[];
-  for(const sid in reg){ const st=S.staff.find(x=>x.id===sid); if(!st||!st.active)continue;
+  for(const sid in reg){ const st=S.staff.find(x=>x.id===sid); if(!st||!st.active||st.boss)continue; // BOSS (Bà Chúa Kho) ko vào pool thường — chỉ triệu hồi
     if(rested.includes(sid))continue;
     arr.push({id:sid,name:st.name,type:st.type,prod:st.prod,cas:reg[sid].length,caList:reg[sid].slice(),hours:reg[sid].length*S.config.caHours,skills:st.skills}); }
   return arr;
 }
+// ===== BÀ CHÚA KHO (nhân sự quản lý, chỉ triệu hồi khi ngày đông / đơn tồn >40%) =====
+const BOSS_ALIAS='Bà Chúa Kho';
+function bossStaff(){ return S.staff.find(s=>s.active&&s.boss); }
+function bossSkills(){ const sk={}; S.stages.forEach(s=>sk[s.key]=s.rate*2); return sk; } // full skill = 2× chuẩn mỗi khâu
+function bossEntry(b){ return {id:b.id,name:BOSS_ALIAS,realName:b.name,type:'FT',prod:Math.max(b.prod||0,Math.round(soloRate(bossSkills()))),cas:2,caList:['Sáng','Chiều'],hours:2*S.config.caHours,skills:bossSkills(),boss:true}; }
 // SÀN tốc độ: người chưa có skill khâu k vẫn có thể "đẩy vào" — khâu bấm hàng loạt (rate≥500, vd Xác nhận) ai cũng nhanh; khâu thủ công thì 5 đơn/h
 const FLOOR_RATE=5;
 function floorRateOf(st){ return st && st.rate>=500 ? st.rate : FLOOR_RATE; }
@@ -1060,7 +1071,7 @@ function toggleReg(sid,ds,ca,on){
 }
 function renderRegTable(){
   defaultWeek();
-  const dates=weekDates(); const act=S.staff.filter(s=>s.active);
+  const dates=weekDates(); const act=S.staff.filter(s=>s.active&&!s.boss); // boss ko đăng ký lịch
   const head=`<thead><tr><th style="text-align:left">Nhân sự</th>${dates.map((d,i)=>`<th>${DOW2[i]}<br><span class="pill">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')}</tr></thead>`;
   const body=act.map(s=>`<tr><td style="text-align:left;font-weight:600">${esc(s.name)} <small class="hint">${s.type}</small></td>${dates.map(d=>{
     const ds=fmt(d); const reg=(S.reg[ds]&&S.reg[ds][s.id])||[];
@@ -1271,7 +1282,7 @@ function adaptiveCaTargets(N, ceilFn){
 }
 // ===== ĐỀ XUẤT LỊCH ĐĂNG KÝ TUẦN: xếp ai đi ca nào để mỗi ca đủ năng lực + phủ khâu nghẽn, ngày công chia ĐỀU, ngày cao điểm ưu tiên người mạnh =====
 function suggestWeekReg(weekStart){
-  const H=S.config.caHours, staff=S.staff.filter(s=>s.active);
+  const H=S.config.caHours, staff=S.staff.filter(s=>s.active&&!s.boss); // boss ko tự xếp lịch
   const stages=S.stages, slowKeys=stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key);
   const prodOf=s=>Math.max(0,(s.prod>0?+s.prod:(S.config.prod||20)));
   const teamOf=arr=>arr.map(s=>({...s,hours:H}));
@@ -1588,7 +1599,7 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
 // gộp 1 ngày
 function planDay(d, acc){
   const ds=fmt(d), t=dayType(d), orders=ordersOn(d), crabD=crabDemandOn(d);
-  const pool=dayPeople(ds);
+  let pool=dayPeople(ds);
   // số ngày đăng ký trong TUẦN của mỗi người -> để ưu tiên người đăng ký ÍT ngày, cân bằng ngày công
   const wk=datesOfWeek(fmt(mondayOf(d)));
   pool.forEach(p=>{ let c=0; wk.forEach(dd=>{const rr=S.reg[fmt(dd)]; if(rr&&rr[p.id]&&rr[p.id].length)c++;}); p.weekDays=c; });
@@ -1597,7 +1608,15 @@ function planDay(d, acc){
   // NGÀY ĐÔNG: đỉnh / 15-25 / có đơn dồn từ ngày nghỉ -> dồn toàn lực phủ khâu, lót khâu yếu
   const busy = (t==='peak'||t==='mid') || rolledOrders(d)>0.5;
   const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
-  const sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
+  let sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
+  // 👑 TRIỆU HỒI BÀ CHÚA KHO: ngày ĐÔNG (đầu tuần/15-25/trùng) hoặc đơn TỒN >40% do thiếu người
+  let summon=null; const boss=bossStaff();
+  if(boss){
+    const cap0=useChain()?sd.chainCap:sd.ordersCap; const shortPct=orders>0?(orders-cap0)/orders:0;
+    if(busy) summon='ngày đông — dồn toàn lực';
+    else if(shortPct>0.40) summon='thiếu người, đơn tồn >40%';
+    if(summon){ pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); } // gồm Bà Chúa Kho, chạy greedy để ép vào team
+  }
   const cov=coverageOf(orders, sd.selected.map(p=>({...p,hours:(p.pca?p.pca.length:p.caList.length)*S.config.caHours}))); // nhận xét kỹ năng cấp ngày (theo ca thực làm)
   const dayCapMain=useChain()?sd.chainCap:sd.ordersCap; // năng lực ngày dùng để xét ĐỦ/THIẾU
   const ordShort=dayCapMain<orders-caSlack(orders)-1e-6; // cho phép dao động ±3% (hoặc ≥5 đơn) — trong khoảng này coi như ĐỦ
@@ -1610,7 +1629,7 @@ function planDay(d, acc){
   else if(!cov.fully)kind='short_skill';
   else if(leftoverH>=S.config.caHours)kind='surplus';
   else kind='ok';
-  return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,
+  return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,summon,
     ord:{selected:sd.selected,status:ordStatus,cov,capacity:sd.ordersCap,capacityChain:sd.chainCap,capacityMain:dayCapMain},
     crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap},
     finalRest:sd.rest,kind};
@@ -1806,7 +1825,7 @@ function renderAttendance(){
 /* ---- độ phủ kỹ năng & rủi ro đào tạo chéo ---- */
 // GỢI Ý ĐÀO TẠO: ghép nhân sự mới/yếu với khâu đang mỏng hoặc khâu nghẽn (theo tố chất + cùng nhóm) để sớm có thêm người giỏi
 function trainingSuggestions(){
-  const act=S.staff.filter(s=>s.active), stages=S.stages;
+  const act=S.staff.filter(s=>s.active&&!s.boss), stages=S.stages; // boss full-skill, ko cần đào tạo
   const isGood=(p,s)=>(p.skills[s.key]||0)>=0.8*s.rate;
   const goodCount=s=>act.filter(p=>isGood(p,s)).length;
   const goodStages=p=>stages.filter(s=>isGood(p,s)).length;
@@ -1832,7 +1851,7 @@ function trainingSuggestions(){
 }
 function renderSkillRisk(){
   const box=document.getElementById('skillRisk'); if(!box)return;
-  const act=S.staff.filter(s=>s.active);
+  const act=S.staff.filter(s=>s.active&&!s.boss); // boss full-skill -> ko tính vào rủi ro mỏng
   let html=`<table><thead><tr><th>Khâu</th><th>Chuẩn</th><th>Người làm được</th><th>Người giỏi (≥80% chuẩn)</th><th>Tốc độ TB</th><th>Rủi ro</th></tr></thead><tbody>`+
     S.stages.map(s=>{
       const can=act.filter(p=>(p.skills[s.key]||0)>0).length;
@@ -2023,6 +2042,7 @@ function renderWeekView(){
       <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${r.ord.selected.length}</b> người · đăng ký <b>${totalReg}</b></div>
+      ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">${esc((bossStaff()||{}).name||'')} xuất trận cân cả team — ${esc(r.summon)}</span></div>`:''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       ${caSection}
       ${stagesHtml}
