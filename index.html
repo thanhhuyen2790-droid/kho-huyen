@@ -502,7 +502,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-27 (sửa ngày lệch ở bảng phê duyệt)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-28 (SỬA TRIỆT ĐỂ lệch ngày toàn hệ thống + di trú khoá)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -579,6 +579,24 @@ function migrate(o){
     if(!(s.prod>0))s.prod=(o.config&&o.config.prod)||20; // tốc độ TRỌN GÓI (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ
   });
   o._skillUnit='donh';
+  // ===== DI TRÚ KHOÁ NGÀY (1 lần) =====
+  // Khoá cũ tạo bằng fmt(giờ UTC) bị lệch 1 ngày (vd dữ liệu Thứ 2 nằm dưới khoá Chủ Nhật).
+  // Nay fmt đã đúng múi giờ -> remap khoá cũ về ĐÚNG ngày địa phương mà nó đại diện. CHỈ đổi khoá, KHÔNG xoá dữ liệu.
+  if(o._dv!==2){
+    const oldFmt=d=>{try{return d.toISOString().slice(0,10)}catch(e){return null}}; // fmt CŨ
+    const intended=k=>{ const base=parse(k); for(const off of [0,1,-1,2,-2]){ const dd=new Date(base); dd.setDate(dd.getDate()+off); if(oldFmt(dd)===k)return dd; } return base; };
+    const reKey=map=>{ if(!map||typeof map!=='object')return map; const out={};
+      Object.keys(map).forEach(k=>{ if(!/^\d{4}-\d{2}-\d{2}$/.test(k)){out[k]=map[k];return;} const nk=fmt(intended(k));
+        if(out[nk]===undefined){out[nk]=map[k];}
+        else if(Array.isArray(out[nk])&&Array.isArray(map[k])){out[nk]=out[nk].concat(map[k]);}
+        else if(typeof out[nk]==='object'){Object.assign(out[nk],map[k]);} });
+      return out; };
+    if(o.reg)o.reg=reKey(o.reg);
+    if(o.restDays)o.restDays=reKey(o.restDays);
+    if(o.train)o.train=reKey(o.train);
+    if(Array.isArray(o.pending))o.pending.forEach(p=>{ if(p.picks)p.picks=reKey(p.picks); });
+    o._dv=2;
+  }
   return o;
 }
 function load(){try{const r=localStorage.getItem(KEY);if(r){return migrate(JSON.parse(r))}}catch(e){}return defaultState()}
@@ -963,10 +981,10 @@ function chainCap(team){ return teamThroughput(team,true)*(1-chainBuffer()); }
 function chainEnough(team,target){ return target<=1e-6 || coverageOf(target/(1-chainBuffer()),team,true).fully; }
 
 /* ---------- DATE HELPERS ---------- */
-function fmt(d){return d.toISOString().slice(0,10)}
+// fmt theo NGÀY ĐỊA PHƯƠNG (khớp với parse) — tránh lệch 1 ngày do toISOString dùng giờ UTC
+function fmt(d){const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
 function parse(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)}
-// Khoá ngày được tạo bằng fmt (giờ UTC) nên parse lại bị lệch múi giờ. keyDate trả ĐÚNG ngày địa phương mà khoá đại diện (để HIỂN THỊ cho đúng), không đụng dữ liệu.
-function keyDate(k){ let d=parse(k); if(fmt(d)===k)return d; for(const off of [1,-1,2,-2]){const dd=new Date(d);dd.setDate(dd.getDate()+off);if(fmt(dd)===k)return dd;} return d; }
+function keyDate(k){return parse(k);} // fmt đã đúng múi giờ -> parse là đủ (giữ hàm để tương thích chỗ gọi cũ)
 function mondayOf(d){const x=new Date(d);const g=(x.getDay()+6)%7;x.setDate(x.getDate()-g);return x}
 function datesOfWeek(w){
   if(!w)return[];
