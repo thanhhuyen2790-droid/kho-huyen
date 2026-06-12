@@ -251,6 +251,7 @@
       <div class="row" style="margin-top:14px;background:var(--chip);padding:12px;border-radius:10px">
         <div><label class="fld">🦀 Crabthing — SKU/ngày (mảng việc riêng)</label><input id="dm-crab-sku" type="number" step="1" onchange="S.demand.crabSku=Math.max(0,+this.value||0);saveAll();renderDemand()"></div>
         <div><label class="fld">Năng suất Crabthing (SKU/người/ngày sáng-chiều)</label><input id="cf-crab-rate" type="number" step="1" onchange="S.config.crabRate=Math.max(1,+this.value||30);saveAll();renderDemand()"></div>
+        <div><label class="fld">Người Crab hỗ trợ chạy đơn (giờ/ca)</label><input id="cf-crab-help" type="number" step="0.25" min="0" onchange="S.config.crabHelpHours=Math.max(0,+this.value||0);saveAll();renderAll()"><small class="hint">Vd 0.5 = nhặt đơn 30' đầu rồi mới sang crab (cộng vào năng lực ca)</small></div>
         <div style="display:flex;align-items:flex-end"><small class="hint">Người làm Crabthing sẽ KHÔNG chạy đơn Shopee+Tiktok. Ưu tiên xếp người chạy đơn trước, dư mới làm Crabthing.</small></div>
       </div>
       <div class="row" style="margin-top:14px">
@@ -474,7 +475,7 @@
       </div>
       <div class="row" style="margin-top:8px;background:#eef9f3;padding:10px;border-radius:10px">
         <div><label class="fld">Cách tính số người</label><select id="cf-model" onchange="S.config.sizingModel=this.value;invalidateSolver();saveAll();renderAll()"><option value="chain">Dây chuyền (dồn người vào khâu nghẽn — ít người hơn)</option><option value="trongoi">Trọn gói (mỗi người làm trọn đơn)</option></select><small class="hint">Dây chuyền = chuyên môn hoá theo khâu, phản ánh đúng cách kho chạy</small></div>
-        <div><label class="fld">Đệm an toàn dây chuyền (%)</label><input id="cf-buffer" type="number" step="1" min="0" max="40" onchange="S.config.chainBuffer=Math.max(0,Math.min(40,+this.value||12));invalidateSolver();saveAll();renderAll()"><small class="hint">Trừ hao phí chuyển khâu. Cao = chắc chắn hơn (hay ra nhiều người hơn)</small></div>
+        <div><label class="fld">Đệm an toàn dây chuyền (%)</label><input id="cf-buffer" type="number" step="1" min="0" max="40" onchange="S.config.chainBuffer=Math.max(0,Math.min(40,+this.value||0));invalidateSolver();saveAll();renderAll()"><small class="hint">Trừ hao phí chuyển khâu. Mặc định 0 (đội chạy mượt). Tăng nếu muốn chắc chắn hơn (hay ra nhiều người hơn)</small></div>
       </div>
       <div class="row" style="margin-top:8px;background:#fff4e0;padding:10px;border-radius:10px">
         <div style="display:flex;align-items:flex-end"><label style="font-size:12.5px;cursor:pointer;font-weight:600"><input type="checkbox" id="cf-boss-on" onchange="S.config.bossEnabled=this.checked;saveAll();renderAll()"> 👑 Bật <b>Bà Chúa Kho</b> (quản lý cân team)</label></div>
@@ -514,7 +515,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-35 (đổi chữ banner Bà Chúa Kho)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-37 (crab hỗ trợ đơn cả 2 ca)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -543,7 +544,7 @@ function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>
 
 function defaultState(){
   return {
-    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:12,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50},
+    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -901,6 +902,7 @@ function renderDemand(){
   document.getElementById('dm-sunday-off').checked=S.config.sundayOff!==false;
   document.getElementById('dm-crab-sku').value=S.demand.crabSku||0;
   document.getElementById('cf-crab-rate').value=S.config.crabRate||30;
+  const cch=document.getElementById('cf-crab-help'); if(cch)cch.value=S.config.crabHelpHours!=null?S.config.crabHelpHours:0.5;
   const plats=[['shopee','Shopee'],['tiktok','Tiktok']]; // Crabthing tách riêng, không tính vào đơn
   document.getElementById('demandBody').innerHTML=plats.map(p=>`<tr>
     <td>${p[1]}</td>
@@ -992,7 +994,7 @@ function teamThroughput(team, useFloor){
   return lo;
 }
 // ===== MÔ HÌNH DÂY CHUYỀN (chuyên môn hoá, dồn người vào khâu nghẽn) =====
-function chainBuffer(){ return Math.max(0,Math.min(0.5,(S.config.chainBuffer!=null?+S.config.chainBuffer:12)/100)); } // đệm hao phí chuyển khâu
+function chainBuffer(){ return Math.max(0,Math.min(0.5,(S.config.chainBuffer!=null?+S.config.chainBuffer:0)/100)); } // đệm hao phí chuyển khâu (mặc định 0 — đội chạy mượt, năng lực = mức thực tế)
 function useChain(){ return S.config.sizingModel!=='trongoi'; } // mặc định dùng dây chuyền
 // ===== MÔ HÌNH PIPELINE: MAX throughput, phân người theo LỢI THẾ SO SÁNH (cắm người mạnh vào nút thắt) =====
 function effRateOf(p,st){ const v=p.skills[st.key]||0; return v>0?v:floorRateOf(st); } // tốc độ thực (sàn 5; khâu bấm hàng loạt = full)
@@ -1577,7 +1579,10 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   ['Sáng','Chiều','Tối'].forEach(ca=>{
     const members=selected.filter(p=>p.pca&&p.pca.includes(ca));
     const c=caCap(ca);                // Σ trọn gói (đối chiếu)
-    const cChain=chainCap(caTeam(ca));// năng lực dây chuyền (đã trừ đệm) — con số quyết định khi bật chain
+    // Người CRABTHING hỗ trợ chạy đơn 1 phần ca (vd 30' đầu nhặt đơn rồi mới sang crab) -> cộng thêm năng lực
+    const crabHelpHrs=Math.max(0,Math.min(caH,(S.config.crabHelpHours!=null?+S.config.crabHelpHours:0.5)));
+    const crabHelpers=(ca!=='Tối'&&crabHelpHrs>0)?(crabByCa[ca]||[]).map(p=>({...p,hours:crabHelpHrs,skills:boostSkills(p)})):[];
+    const cChain=chainCap(caTeam(ca).concat(crabHelpers));// năng lực dây chuyền (gồm cả crab hỗ trợ)
     const cMain=useChain()?cChain:c;  // năng lực dùng để xét ĐỦ/THIẾU
     const need=tgt(ca);               // chỉ tiêu ca LINH ĐỘNG (mặc định 60/40, ca mạnh gánh ca yếu)
     const quota=ca==='Sáng'?qS:(ca==='Chiều'?qC:0);
@@ -1588,7 +1593,7 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
     const crabHere=(ca==='Tối')?[]:(crabByCa[ca]||[]);
     let weak=[], roles={}, assignH={}, gap=[], bnKey=null, slowKeys=[], slowConflict=[], slowReco=null;
     if(ca!=='Tối'&&members.length&&N>0){
-      const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)}));
+      const mm=members.map(p=>({...p,hours:caH,skills:boostSkills(p)})).concat(crabHelpers); // gồm cả người crab hỗ trợ (giờ ít hơn)
       // PHÂN GIỜ TỐI ƯU theo pipeline: cắm người MẠNH nhất vào khâu NGHẼN (Gói hộp), phần còn lại rải theo lợi thế -> tổng đơn cao nhất
       const pt=pipelineThroughput(mm);
       gap=S.stages.filter(s=>!members.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key); // khâu KHÔNG ai biết làm thật -> cảnh báo
@@ -2166,7 +2171,7 @@ function renderAll(){
   const cam=document.getElementById('cf-amshare'); if(cam)cam.value=S.config.amShare!=null?S.config.amShare:60;
   const csl=document.getElementById('cf-slack'); if(csl)csl.value=S.config.caSlackPct!=null?S.config.caSlackPct:3;
   const cmd=document.getElementById('cf-model'); if(cmd)cmd.value=S.config.sizingModel||'chain';
-  const cbf=document.getElementById('cf-buffer'); if(cbf)cbf.value=S.config.chainBuffer!=null?S.config.chainBuffer:12;
+  const cbf=document.getElementById('cf-buffer'); if(cbf)cbf.value=S.config.chainBuffer!=null?S.config.chainBuffer:0;
   const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
   const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
   const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
