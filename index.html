@@ -113,6 +113,9 @@
   .trainrow{padding:5px 0;border-top:1px dashed #d4e8d9;font-size:13px}
   .trainrow:first-of-type{border-top:none}
   .flownote{margin-top:6px;background:#eafaf3;border:1px solid #bfe7d6;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#0f6e56}
+  .wavebtn{margin-top:6px;width:100%;text-align:left;cursor:pointer;background:#eef4ff;border:1px solid #cdd9f5;border-radius:8px;padding:9px 11px;font-weight:700;color:#274690;font-size:12px}
+  .wavebtn:hover{background:#e0ebff;border-color:#9fb8ee}
+  .waveFull{font-size:12.5px}
   .wave{margin-top:6px;background:#eef4ff;border:1px solid #cdd9f5;border-radius:8px;padding:6px 8px;font-size:11.5px}
   .wave>summary{cursor:pointer;font-weight:700;color:#274690}
   .wstep{margin-top:6px;padding-left:4px;color:#26314d;line-height:1.5}
@@ -516,7 +519,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-54 (sóng quét tuần tự nhịp lớn + gắn mốc giờ từng khối trên biểu đồ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-55 (nút Kịch bản mở BẢNG RIÊNG toàn màn hình: biểu đồ + mô tả, xem trọn khung giờ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1994,6 +1997,19 @@ function simWave(mem,N){
   let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
   return {makespan:t,blocks,bnK,sStart,sEnd};
 }
+// ===== MODAL KỊCH BẢN: bấm nút -> mở bảng riêng toàn màn hình, xem trọn khung thời gian =====
+const WAVE_CACHE={};
+function openWaveModal(key){
+  const d=WAVE_CACHE[key]; if(!d)return;
+  const wd=['CN','T2','T3','T4','T5','T6','T7']; const ds=key.split('|')[0]; let lbl=ds+' · ca '+d.ca;
+  try{const dt=parse(ds); lbl=wd[dt.getDay()]+' '+ds.slice(5)+' · ca '+d.ca;}catch(e){}
+  const content=wavePlaybook(d.cs,d.ca);
+  let ov=document.getElementById('waveModal'); if(!ov){ov=document.createElement('div');ov.id='waveModal';document.body.appendChild(ov);}
+  ov.className='pvmodal';
+  ov.innerHTML=`<div class="pvbox"><div class="pvhead"><b>🌊 Kịch bản chạy ca — ${lbl}</b><button class="btn" onclick="closeWaveModal()">✕ Đóng</button></div><div style="padding:14px;overflow:auto;flex:1 1 auto;min-height:0">${content}</div></div>`;
+  ov.style.display='flex'; ov.onclick=e=>{if(e.target===ov)closeWaveModal();};
+}
+function closeWaveModal(){const ov=document.getElementById('waveModal'); if(ov)ov.remove();}
 // màu từng khâu cho biểu đồ
 const STAGE_COLOR={xacnhan:['#8b5cf6','XN'],nhat:['#3b82f6','Nhặt'],kiem:['#06b6d4','Kiểm'],bocxoc:['#f59e0b','Bọc'],goihop:['#ef4444','Gói'],bitdau:['#65a30d','Bịt'],tit:['#10b981','Tít']};
 // BIỂU ĐỒ THỜI GIAN (Gantt): mỗi người 1 dòng, khối màu = khâu, trục giờ, cuộn ngang được
@@ -2032,7 +2048,7 @@ function wavePlaybook(cs,ca){
   const bossAt=k=>mem0.find(p=>p.boss&&rate(p,k)>0);
   const gapWarn=k=>{ if(skl(k).length)return ''; const b=bossAt(k); return b?` <span style="color:#b8860b;font-weight:600">⚠️ không nhân sự nào biết làm → 👑 ${esc(b.name)} đảm nhiệm</span>`:` <span style="color:#d4537e;font-weight:700">⚠️ KHÔNG AI làm được khâu này — cần gọi 👑 / đào tạo!</span>`; };
   if(M<3 || need<=0){
-    return `<details class="wave"><summary>🌊 Kịch bản chạy ca (gợi ý)</summary><div class="wstep"><span class="wt">Đầu ca</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></details>`;
+    return `<div class="waveFull"><div class="wstep"><span class="wt">Đầu ca</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></div>`;
   }
   const mem=mem0.map(p=>Object.assign({},p,{hours:caH}));
   const sim=simWave(mem,need); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
@@ -2046,13 +2062,13 @@ function wavePlaybook(cs,ca){
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
   const overCa=mk>caH*60+5;
   const finishTxt=mk<=14*60?`<b>${clk(mk)}</b> (~${(mk/60).toFixed(1)}h)`:`~${(mk/60).toFixed(1)}h`;
-  return `<details class="wave"><summary>🌊 Kịch bản chạy ca (mô phỏng từng phút)</summary>`+
-    `<div class="wstep">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
-    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian — mỗi người 1 dòng, màu = khâu (cuộn ngang để xem giờ):</div>`+
+  return `<div class="waveFull">`+
+    `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
+    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian — mỗi người 1 dòng, màu = khâu, có mốc giờ trên từng khối:</div>`+
     gantt+ gapLines+
-    `<details style="margin-top:4px"><summary style="font-size:12px;cursor:pointer;color:var(--brand)">▸ Xem chi tiết giờ từng người (dạng chữ)</summary>${rowsTxt}</details>`+
-    `<div class="wnote">⚙️ Đầu ca cả team dồn <b>Nhặt</b> lấy đệm rồi tản về vị trí; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. Ước xong cả ${need} đơn lúc ${finishTxt}${overCa?` <span style="color:#d4537e">⚠️ vượt ${caH}h/ca — cân nhắc thêm người hoặc kéo dài ca</span>`:''}. <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
-    `</details>`;
+    `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand)">▸ Mô tả bằng chữ (giờ từng người)</summary>${rowsTxt}</details>`+
+    `<div class="wnote">⚙️ Đầu ca Bà Chúa Kho xác nhận, rồi cả team dồn <b>Nhặt</b> và lần lượt quét sang Kiểm → Bọc → Gói hộp; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. Ước xong cả ${need} đơn lúc ${finishTxt}${overCa?` <span style="color:#d4537e">⚠️ vượt ${caH}h/ca — cân nhắc thêm người hoặc kéo dài ca</span>`:''}. <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
+    `</div>`;
 }
 /* ---- chi tiết TUẦN ---- */
 function renderWeekView(){
@@ -2140,7 +2156,8 @@ function renderWeekView(){
       const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
       const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
       const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
-      const wave = ca!=='Tối' ? wavePlaybook(cs,ca) : '';
+      let wave='';
+      if(ca!=='Tối'){ const wkey=r.ds+'|'+ca; WAVE_CACHE[wkey]={cs,ca}; wave=`<button class="wavebtn" onclick="openWaveModal('${wkey}')">🌊 Kịch bản chạy ca — bấm xem sơ đồ toàn ca ▸</button>`; }
       return `<div class="caSec">${header}${perf}${timeNote}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${wave}${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:(r.crab&&r.crab.boss)?`<div class="metric" style="color:#b8860b"><b>🦀 Crabthing:</b> 👑 Bà Chúa Kho lo (${Math.round(r.crabD)} SKU) — đủ</div>`:'';
