@@ -516,7 +516,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-47 (sóng + chọn theo kỹ năng; khâu trống skill → 👑 Bà Chúa Kho + cảnh báo trong kịch bản)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-49 (kịch bản sóng = mô phỏng DES từng phút: lịch giờ từng người, có mệt mỏi cuối ca)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -545,7 +545,7 @@ function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>
 
 function defaultState(){
   return {
-    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5},
+    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5,fatigueOn:true,fatiguePct:4.5,caStartSang:'07:30',caStartChieu:'13:30'},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -1951,42 +1951,70 @@ function renderMonthView(){
 }
 
 // KỊCH BẢN SÓNG: hướng dẫn luân chuyển người theo thời gian trong 1 ca (đầu ca cả team nhặt -> tràn dần xuống, dồn vào khâu nghẽn)
-function wavePlaybook(cs){
-  const mem=(cs&&cs.members)||[]; const M=mem.length; if(M<1) return '';
-  const sk=(p,k)=>p.skills[k]||0; const nm=p=>esc(p.name);
-  const byMost=(arr,k)=>arr.slice().sort((a,b)=>sk(b,k)-sk(a,k));
-  const list=arr=>arr.map(nm).join(', ')||'—';
-  const caH=S.config.caHours||4; const t=f=>{const m=Math.round(caH*60*f);return m===0?'Đầu ca':('+'+m+"'");};
-  // ĐỘI CUỐI-CA lấy thẳng từ phân giờ pipeline (cs.roles) -> KHỚP bảng khâu phía trên
-  const inStage=k=>mem.filter(p=>((cs.roles&&cs.roles[p.id])||[]).includes(k)).sort((a,b)=>((cs.assignH[b.id]||{})[k]||0)-((cs.assignH[a.id]||{})[k]||0));
-  if(M<3){
-    return `<details class="wave"><summary>🌊 Kịch bản chạy ca (gợi ý)</summary><div class="wstep"><span class="wt">${t(0)}</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></details>`;
+// hệ số MỆT MỎI cuối ca (đầu ca 1.0, giảm dần theo giờ)
+function fatigueFactor(min){ if(S.config&&S.config.fatigueOn===false)return 1; const pph=(S.config&&S.config.fatiguePct!=null?+S.config.fatiguePct:4.5)/100; return Math.max(0.75,1-pph*(min/60)); }
+// quy phút-từ-đầu-ca -> giờ đồng hồ theo giờ bắt đầu ca
+function clockOf(ca,min){ const def=ca==='Chiều'?'13:30':'07:30'; let s=(S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def; const pr=String(s).split(':'); let tot=(+pr[0]||0)*60+(+pr[1]||0)+Math.round(min); tot=((tot%1440)+1440)%1440; const H=Math.floor(tot/60),M=tot%60; return H+'h'+(M<10?'0'+M:M); }
+// ===== MÔ PHỎNG SÓNG TỪNG PHÚT (Discrete Event Sim): ai làm gì, bao lâu, khi nào chuyển khâu =====
+// Bám lời giải cân bằng (LP) làm kế hoạch trạm; khâu của mình chưa có hàng -> xuống phụ khâu trước; cân bằng feed (ko nhồi người vượt mức khâu trước nuôi); có mệt mỏi.
+function simWave(mem,N){
+  const ORDER=S.stages.map(s=>s.key); const iOf=k=>ORDER.indexOf(k); const caH=S.config.caHours||4; const dtH=1/60;
+  const rate0=(p,k)=>(p.skills[k]||0);
+  if(!mem.length||N<=0) return {makespan:0,blocks:{},bnK:ORDER[ORDER.length-1],sStart:{},sEnd:{}};
+  const pt=pipelineThroughput(mem.map(p=>Object.assign({},p,{hours:caH})));
+  const budget={}; mem.forEach(p=>{budget[p.id]={}; ORDER.forEach(k=>budget[p.id][k]=Math.round(((pt.assign[p.id]||{})[k]||0)*60));});
+  const done={}; ORDER.forEach(k=>done[k]=0); const log={}; mem.forEach(p=>log[p.id]=[]); const sStart={},sEnd={};
+  let t=0,guard=0;
+  while(done[ORDER[ORDER.length-1]]<N-1e-6 && guard++<1800){
+    const snap=Object.assign({},done);
+    const WIP=k=>{const i=iOf(k);const up=i===0?N:snap[ORDER[i-1]];return up-snap[k];}; const R=k=>N-snap[k];
+    const cap={}; ORDER.forEach(k=>cap[k]=0); const asg={};
+    const ord=mem.slice().sort((a,b)=>Math.max.apply(null,ORDER.map(k=>rate0(b,k)))-Math.max.apply(null,ORDER.map(k=>rate0(a,k))));
+    for(const p of ord){ const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6;
+      const fedOK=k=>{const i=iOf(k); if(i===0)return true; const up=ORDER[i-1]; return R(up)<=1e-6||cap[k]<cap[up]+1e-6;};
+      const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k);
+      let plan=ORDER.filter(k=>budget[p.id][k]>0&&okK(k)).sort((a,b)=>iOf(a)-iOf(b)); let pick=plan[0];
+      if(!pick)pick=ORDER.filter(okK).sort((a,b)=>iOf(a)-iOf(b))[0];
+      if(!pick)pick=ORDER.filter(k=>eff(k)>0&&R(k)>1e-6&&room(k)).sort((a,b)=>iOf(a)-iOf(b))[0];
+      if(!pick)continue; asg[p.id]=pick; cap[pick]+=eff(pick); if(budget[p.id][pick]>0)budget[p.id][pick]--;
+    }
+    ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
+    mem.forEach(p=>{const k=asg[p.id];if(!k)return;const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t)l.to=t+1;else L.push({k,from:t,to:t+1});});
+    t++;
   }
-  const need=Math.round(cs.need||0); const targetR=caH>0?Math.round(need/caH):0; // CHỈ TIÊU TỐC ĐỘ mỗi khâu (đơn/h)
-  const stObj=k=>S.stages.find(s=>s.key===k)||{rate:100,name:k};
-  const rAt=(ppl,k)=>Math.round(ppl.reduce((a,p)=>a+(p.skills[k]>0?p.skills[k]:floorRateOf(stObj(k))),0)); // tốc độ team cộng lại ở khâu này
-  // LỚP KỸ NĂNG: chỉ người CÓ skill mới được đẩy vào khâu; khâu trống skill -> 👑 Bà Chúa Kho + CẢNH BÁO
-  const skl=k=>mem.filter(p=>!p.boss&&(p.skills[k]||0)>0);           // nhân sự thường BIẾT làm khâu này
-  const bossAt=k=>mem.find(p=>p.boss&&(p.skills[k]||0)>0);           // Bà Chúa Kho (nếu đã triệu hồi)
-  const gapWarn=k=>{ if(skl(k).length)return ''; const b=bossAt(k); return b?` <span style="color:#b8860b;font-weight:600">⚠️ không nhân sự nào biết làm → 👑 ${nm(b)} đảm nhiệm</span>`:` <span style="color:#d4537e;font-weight:700">⚠️ KHÔNG AI làm được khâu này — cần gọi 👑 / đào tạo!</span>`; };
-  const xacP=inStage('xacnhan')[0]||byMost(skl('xacnhan'),'xacnhan')[0]||bossAt('xacnhan')||byMost(mem,'xacnhan')[0];
-  const xacR=(xacP.skills.xacnhan>0?xacP.skills.xacnhan:floorRateOf(stObj('xacnhan')));
-  const confirmMin=xacR>0?Math.max(1,Math.round(need/xacR*60)):0; // phút xác nhận xong cả ca
-  const nhatFb=inStage('nhat').length?inStage('nhat'):byMost(skl('nhat'),'nhat'); // nhặt: ưu tiên người có skill
-  const kiem=inStage('kiem'), boc=inStage('bocxoc'), goi=inStage('goihop'), bit=inStage('bitdau'), tit=inStage('tit'), nhat=nhatFb.length?nhatFb:mem.filter(p=>p!==xacP);
-  // 1 dòng cho mỗi khâu: người (CÓ skill) + tốc độ tổng vs chỉ tiêu; khâu trống skill -> cảnh báo + 👑
-  const line=(icon,name,key,ppl,bn)=>{ const warn=gapWarn(key); if(!ppl.length&&!warn)return ''; const r=rAt(ppl,key); const ok=r>=targetR;
-    return `<div class="wstep">${icon} <b>${name}${bn?' 🔴':''}:</b> ${list(ppl)}${ppl.length?` — tốc độ <b>${r}</b> đơn/h ${ok?`<span style="color:#0f6e56">(đạt ≥${targetR})</span>`:`<span style="color:#d4537e">(&lt;${targetR}, dồn thêm người)</span>`}`:''}${warn}</div>`; };
-  return `<details class="wave"><summary>🌊 Kịch bản chạy ca (sóng + chọn theo kỹ năng)</summary>`+
-    `<div class="wstep">🎯 Mỗi khâu cần đạt <b>~${targetR} đơn/h</b> (${need} đơn ÷ ${caH}h) thì mới kịp chỉ tiêu ca. Chỉ đẩy người <b>CÓ kỹ năng</b> vào từng khâu; khâu trống kỹ năng → gọi 👑.</div>`+
-    `<div class="wstep"><span class="wt">${t(0)}</span> 🖥️ <b>Xác nhận:</b> ${nm(xacP)} (${Math.round(xacR)} đơn/h) → xong ${need} đơn trong <b>~${confirmMin}'</b>${gapWarn('xacnhan')}. Rồi <b>cả team</b> nhảy vào Nhặt.</div>`+
-    line('📦','Nhặt đơn','nhat',nhat)+
-    line('🔎','Kiểm đơn','kiem',kiem)+
-    line('📦','Vào bọc xóc','bocxoc',boc,true)+
-    line('🎁','Gói hộp','goihop',goi,true)+
-    line('🏷️','Bịt đầu','bitdau',bit)+
-    line('✅','Tít đơn','tit',tit)+
-    `<div class="wnote">⚙️ <b>Cách dồn người:</b> giữ vừa đủ người để mỗi khâu đạt ~${targetR} đơn/h. Khâu nào tốc độ team VƯỢT ${targetR} (dư) → cắt người dư sang khâu sau; khâu chưa đạt (nhất là <b>Gói hộp, Bọc xóc</b>) → dồn thêm người vào cho đơn trôi. Người xong khâu nhanh tự sang phụ khâu chậm — không để khâu nào nghẽn làm đơn ùn.</div>`+
+  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6)l.to=s.to;else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k)l.to=s.to;else g.push(Object.assign({},s));});blocks[p.id]=g;});
+  let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
+  return {makespan:t,blocks,bnK,sStart,sEnd};
+}
+function wavePlaybook(cs,ca){
+  const mem0=(cs&&cs.members)||[]; const M=mem0.length; if(M<1) return '';
+  const caH=S.config.caHours||4;
+  const ORDER=S.stages.map(s=>s.key), WORK=ORDER.filter(k=>k!=='xacnhan');
+  const stN=k=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;};
+  const stIcon={xacnhan:'🖥️',nhat:'📦',kiem:'🔎',bocxoc:'📦',goihop:'🎁',bitdau:'🏷️',tit:'✅'};
+  const rate=(p,k)=>(p.skills[k]||0);
+  const need=Math.round((cs&&cs.need)||0); const targetR=caH>0?Math.round(need/caH):0;
+  const skl=k=>mem0.filter(p=>!p.boss&&rate(p,k)>0);
+  const bossAt=k=>mem0.find(p=>p.boss&&rate(p,k)>0);
+  const gapWarn=k=>{ if(skl(k).length)return ''; const b=bossAt(k); return b?` <span style="color:#b8860b;font-weight:600">⚠️ không nhân sự nào biết làm → 👑 ${esc(b.name)} đảm nhiệm</span>`:` <span style="color:#d4537e;font-weight:700">⚠️ KHÔNG AI làm được khâu này — cần gọi 👑 / đào tạo!</span>`; };
+  if(M<3 || need<=0){
+    return `<details class="wave"><summary>🌊 Kịch bản chạy ca (gợi ý)</summary><div class="wstep"><span class="wt">Đầu ca</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></details>`;
+  }
+  const mem=mem0.map(p=>Object.assign({},p,{hours:caH}));
+  const sim=simWave(mem,need); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
+  // lịch từng người (theo thứ tự quy trình họ đi qua)
+  const rows=mem.map(p=>{ const b=sim.blocks[p.id]||[]; if(!b.length)return '';
+    const seq=b.map(s=>`${stIcon[s.k]||''}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span>`).join(' → ');
+    return `<div class="wstep" style="margin:2px 0">${p.boss?'👑 ':''}<b>${esc(p.name)}:</b> ${seq}</div>`;
+  }).filter(Boolean).join('');
+  const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
+  const overCa=mk>caH*60+5;
+  const finishTxt=mk<=14*60?`<b>${clk(mk)}</b> (~${(mk/60).toFixed(1)}h)`:`~${(mk/60).toFixed(1)}h`;
+  return `<details class="wave"><summary>🌊 Kịch bản chạy ca (mô phỏng từng phút)</summary>`+
+    `<div class="wstep">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
+    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Lịch từng người (ai làm gì · từ–đến · xong khâu thì chuyển khâu sau):</div>`+
+    rows+ gapLines+
+    `<div class="wnote">⚙️ Đầu ca cả team dồn <b>Nhặt</b> lấy đệm rồi tản về vị trí; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. Ước xong cả ${need} đơn lúc ${finishTxt}${overCa?` <span style="color:#d4537e">⚠️ vượt ${caH}h/ca — cân nhắc thêm người hoặc kéo dài ca</span>`:''}. <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
     `</details>`;
 }
 /* ---- chi tiết TUẦN ---- */
@@ -2075,7 +2103,7 @@ function renderWeekView(){
       const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
       const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
       const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
-      const wave = ca!=='Tối' ? wavePlaybook(cs) : '';
+      const wave = ca!=='Tối' ? wavePlaybook(cs,ca) : '';
       return `<div class="caSec">${header}${perf}${timeNote}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${wave}${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:(r.crab&&r.crab.boss)?`<div class="metric" style="color:#b8860b"><b>🦀 Crabthing:</b> 👑 Bà Chúa Kho lo (${Math.round(r.crabD)} SKU) — đủ</div>`:'';
