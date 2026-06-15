@@ -527,7 +527,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-57 (bảng phân khâu thu gọn thành nút mở modal rộng, tên không bị cắt)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-58 (biểu đồ sóng giãn lấp đầy chiều ngang modal, chữ trong ô không bị bóp/đè)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2036,26 +2036,27 @@ const STAGE_COLOR={xacnhan:['#8b5cf6','XN'],nhat:['#3b82f6','Nhặt'],kiem:['#06
 // BIỂU ĐỒ THỜI GIAN (Gantt): mỗi người 1 dòng, khối màu = khâu, trục giờ, cuộn ngang được
 function waveGantt(mem,sim,ca){
   const stN=k=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;}; const clk=m=>clockOf(ca,m);
-  const mk=sim.makespan||1; const ppm=2.4; const W=Math.max(160,Math.round(mk*ppm)); const quarterPx=Math.round(15*ppm), hourPx=Math.round(60*ppm);
+  const mk=sim.makespan||1;
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
   if(!people.length) return '';
-  const namesCol=`<div style="height:16px"></div>`+people.map(p=>`<div style="height:32px;line-height:32px;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)}">${p.boss?'👑 ':''}${esc(p.name)}</div>`).join('');
-  // TRỤC THỜI GIAN: mốc 15 phút; mốc đầu (7h30) canh trái cho khỏi cụt
-  let axis=''; for(let m=0;m<=mk+1;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${Math.round(m*ppm)}px;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
-  const axisRow=`<div style="position:relative;height:16px;width:${W}px">${axis}</div>`;
+  const namesCol=`<div style="height:16px"></div>`+people.map(p=>`<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)}">${p.boss?'👑 ':''}${esc(p.name)}</div>`).join('');
+  // ĐỊNH VỊ THEO %: biểu đồ luôn lấp đầy chiều ngang khả dụng; ca dài thì min-width cho cuộn
+  const minW=Math.round(mk*3.2), apxW=Math.max(820,minW), pct=v=>v/mk*100, hourPct=60/mk*100, quarterPct=15/mk*100;
+  let axis=''; for(let m=0;m<=mk+1;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
+  const axisRow=`<div style="position:relative;height:16px">${axis}</div>`;
   const trackRows=people.map(p=>{ const b=sim.blocks[p.id];
-    const segs=b.map(s=>{const L=Math.round(s.from*ppm),Wd=Math.max(3,Math.round((s.to-s.from)*ppm));const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
-      let lab=''; if(Wd>=52)lab=`<span style="font-weight:600">${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wd>=20)lab=`<span style="font-weight:600">${cc[1]}</span>`;
-      return `<div title="${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${L}px;width:${Wd}px;top:2px;height:28px;background:${cc[0]};border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15">${lab}</div>`;}).join('');
-    return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0 1px,transparent 1px ${hourPx}px),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0 1px,transparent 1px ${quarterPx}px)">${segs}</div>`;
+    const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/mk*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
+      let lab=''; if(Wpx>=50)lab=`<span style="font-weight:600;white-space:nowrap">${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95;white-space:nowrap">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wpx>=20)lab=`<span style="font-weight:600;white-space:nowrap">${cc[1]}</span>`;
+      return `<div title="${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${Lp.toFixed(3)}%;width:${Wp.toFixed(3)}%;top:2px;height:28px;background:${cc[0]};border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15;padding:0 2px;box-sizing:border-box">${lab}</div>`;}).join('');
+    return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0,rgba(0,0,0,.10) 1px,transparent 1px,transparent ${hourPct.toFixed(3)}%),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0,rgba(0,0,0,.05) 1px,transparent 1px,transparent ${quarterPct.toFixed(3)}%)">${segs}</div>`;
   }).join('');
   const legend=S.stages.map(s=>{const cc=STAGE_COLOR[s.key]||['#888','']; return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 3px 0;font-size:10px;white-space:nowrap"><span style="width:11px;height:11px;background:${cc[0]};border-radius:2px;display:inline-block"></span>${stN(s.key)}</span>`;}).join('');
   return `<div style="margin:6px 0">`+
     `<div style="margin-bottom:5px;line-height:1.6">${legend}</div>`+
-    `<div style="display:flex;gap:5px;align-items:flex-start">`+
-      `<div style="flex:0 0 68px">${namesCol}</div>`+
-      `<div style="overflow-x:auto;flex:1 1 auto;-webkit-overflow-scrolling:touch"><div style="width:${W}px">${axisRow}${trackRows}</div></div>`+
+    `<div style="display:flex;gap:6px;align-items:flex-start">`+
+      `<div style="flex:0 0 100px">${namesCol}</div>`+
+      `<div style="overflow-x:auto;flex:1 1 auto;-webkit-overflow-scrolling:touch"><div style="min-width:${minW}px">${axisRow}${trackRows}</div></div>`+
     `</div></div>`;
 }
 function wavePlaybook(cs,ca){
