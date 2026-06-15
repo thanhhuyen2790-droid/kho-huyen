@@ -115,6 +115,14 @@
   .flownote{margin-top:6px;background:#eafaf3;border:1px solid #bfe7d6;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#0f6e56}
   .wavebtn{margin-top:6px;width:100%;text-align:left;cursor:pointer;background:#eef4ff;border:1px solid #cdd9f5;border-radius:8px;padding:9px 11px;font-weight:700;color:#274690;font-size:12px}
   .wavebtn:hover{background:#e0ebff;border-color:#9fb8ee}
+  .stagebtn{margin-top:6px;width:100%;text-align:left;cursor:pointer;background:#f0fbf5;border:1px solid #bfe6cf;border-radius:8px;padding:9px 11px;font-weight:700;color:#0f6e56;font-size:12px}
+  .stagebtn:hover{background:#e3f7ec;border-color:#8fd4ab}
+  .ctmodal{table-layout:auto;font-size:13px;margin-top:0}
+  .ctmodal th,.ctmodal td{word-break:normal;overflow-wrap:normal;padding:7px 10px;vertical-align:top}
+  .ctmodal td:first-child{white-space:nowrap}
+  .ctmodal td:nth-child(2){min-width:210px}
+  .ctmodal .ppl{padding:3px 0;border-top:1px dashed var(--line);white-space:nowrap}
+  .ctmodal .ppl:first-child{border-top:0;padding-top:0}
   .waveFull{font-size:12.5px}
   .wave{margin-top:6px;background:#eef4ff;border:1px solid #cdd9f5;border-radius:8px;padding:6px 8px;font-size:11.5px}
   .wave>summary{cursor:pointer;font-weight:700;color:#274690}
@@ -519,7 +527,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-55 (nút Kịch bản mở BẢNG RIÊNG toàn màn hình: biểu đồ + mô tả, xem trọn khung giờ)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-57 (bảng phân khâu thu gọn thành nút mở modal rộng, tên không bị cắt)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1989,11 +1997,12 @@ function simWave(mem,N){
       if(!pick)pick=ORDER.filter(k=>eff(k)>0&&R(k)>1e-6&&room(k)).sort((a,b)=>iOf(a)-iOf(b))[0];
       if(!pick){cur[p.id]=null;continue;} asg[p.id]=pick; cur[p.id]=pick; cap[pick]+=eff(pick); if(budget[p.id][pick]>0)budget[p.id][pick]--;
     }
-    ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
-    mem.forEach(p=>{const k=asg[p.id];if(!k)return;const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t)l.to=t+1;else L.push({k,from:t,to:t+1});});
+    const advK={};
+    ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); advK[k]=adv; if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
+    mem.forEach(p=>{const k=asg[p.id];if(!k)return; const myr=rate0(p,k)*fatigueFactor(t); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
     t++;
   }
-  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6)l.to=s.to;else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k)l.to=s.to;else g.push(Object.assign({},s));});blocks[p.id]=g;});
+  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});blocks[p.id]=g;});
   let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
   return {makespan:t,blocks,bnK,sStart,sEnd};
 }
@@ -2010,23 +2019,36 @@ function openWaveModal(key){
   ov.style.display='flex'; ov.onclick=e=>{if(e.target===ov)closeWaveModal();};
 }
 function closeWaveModal(){const ov=document.getElementById('waveModal'); if(ov)ov.remove();}
+// ===== MODAL BẢNG PHÂN NGƯỜI THEO KHÂU: bấm nút -> mở bảng rộng, tên không bị cắt =====
+const STAGE_CACHE={};
+function openStageModal(key){
+  const d=STAGE_CACHE[key]; if(!d)return;
+  const wd=['CN','T2','T3','T4','T5','T6','T7']; const ds=key.split('|')[0]; let lbl=ds+' · ca '+d.ca;
+  try{const dt=parse(ds); lbl=wd[dt.getDay()]+' '+ds.slice(5)+' · ca '+d.ca;}catch(e){}
+  let ov=document.getElementById('stageModal'); if(!ov){ov=document.createElement('div');ov.id='stageModal';document.body.appendChild(ov);}
+  ov.className='pvmodal';
+  ov.innerHTML=`<div class="pvbox"><div class="pvhead"><b>📋 Phân người theo khâu — ${lbl}</b><button class="btn" onclick="closeStageModal()">✕ Đóng</button></div><div style="padding:14px;overflow:auto;flex:1 1 auto;min-height:0">${d.html}</div></div>`;
+  ov.style.display='flex'; ov.onclick=e=>{if(e.target===ov)closeStageModal();};
+}
+function closeStageModal(){const ov=document.getElementById('stageModal'); if(ov)ov.remove();}
 // màu từng khâu cho biểu đồ
 const STAGE_COLOR={xacnhan:['#8b5cf6','XN'],nhat:['#3b82f6','Nhặt'],kiem:['#06b6d4','Kiểm'],bocxoc:['#f59e0b','Bọc'],goihop:['#ef4444','Gói'],bitdau:['#65a30d','Bịt'],tit:['#10b981','Tít']};
 // BIỂU ĐỒ THỜI GIAN (Gantt): mỗi người 1 dòng, khối màu = khâu, trục giờ, cuộn ngang được
 function waveGantt(mem,sim,ca){
   const stN=k=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;}; const clk=m=>clockOf(ca,m);
-  const mk=sim.makespan||1; const ppm=1.7; const W=Math.max(160,Math.round(mk*ppm)); const hourPx=Math.round(60*ppm);
+  const mk=sim.makespan||1; const ppm=2.4; const W=Math.max(160,Math.round(mk*ppm)); const quarterPx=Math.round(15*ppm), hourPx=Math.round(60*ppm);
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
   if(!people.length) return '';
-  const namesCol=`<div style="height:14px"></div>`+people.map(p=>`<div style="height:30px;line-height:30px;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)}">${p.boss?'👑 ':''}${esc(p.name)}</div>`).join('');
-  const nH=Math.ceil(mk/60); let axis=''; for(let h=0;h<=nH;h++){axis+=`<div style="position:absolute;left:${Math.round(h*hourPx)}px;font-size:9px;color:#999;transform:translateX(-50%);white-space:nowrap">${clk(h*60)}</div>`;}
-  const axisRow=`<div style="position:relative;height:14px;width:${W}px">${axis}</div>`;
+  const namesCol=`<div style="height:16px"></div>`+people.map(p=>`<div style="height:32px;line-height:32px;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)}">${p.boss?'👑 ':''}${esc(p.name)}</div>`).join('');
+  // TRỤC THỜI GIAN: mốc 15 phút; mốc đầu (7h30) canh trái cho khỏi cụt
+  let axis=''; for(let m=0;m<=mk+1;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${Math.round(m*ppm)}px;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
+  const axisRow=`<div style="position:relative;height:16px;width:${W}px">${axis}</div>`;
   const trackRows=people.map(p=>{ const b=sim.blocks[p.id];
-    const segs=b.map(s=>{const L=Math.round(s.from*ppm),Wd=Math.max(3,Math.round((s.to-s.from)*ppm));const cc=STAGE_COLOR[s.k]||['#888','?'];
-      let lab=''; if(Wd>=46)lab=`<span style="font-weight:600">${cc[1]}</span><span style="font-size:9px;opacity:.95">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wd>=18)lab=`<span style="font-weight:600">${cc[1]}</span>`;
-      return `<div title="${stN(s.k)} ${clk(s.from)}–${clk(s.to)}" style="position:absolute;left:${L}px;width:${Wd}px;top:2px;height:26px;background:${cc[0]};border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15">${lab}</div>`;}).join('');
-    return `<div style="position:relative;height:30px;background:repeating-linear-gradient(to right,rgba(0,0,0,.06) 0 1px,transparent 1px ${hourPx}px)">${segs}</div>`;
+    const segs=b.map(s=>{const L=Math.round(s.from*ppm),Wd=Math.max(3,Math.round((s.to-s.from)*ppm));const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
+      let lab=''; if(Wd>=52)lab=`<span style="font-weight:600">${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wd>=20)lab=`<span style="font-weight:600">${cc[1]}</span>`;
+      return `<div title="${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${L}px;width:${Wd}px;top:2px;height:28px;background:${cc[0]};border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15">${lab}</div>`;}).join('');
+    return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0 1px,transparent 1px ${hourPx}px),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0 1px,transparent 1px ${quarterPx}px)">${segs}</div>`;
   }).join('');
   const legend=S.stages.map(s=>{const cc=STAGE_COLOR[s.key]||['#888','']; return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 3px 0;font-size:10px;white-space:nowrap"><span style="width:11px;height:11px;background:${cc[0]};border-radius:2px;display:inline-block"></span>${stN(s.key)}</span>`;}).join('');
   return `<div style="margin:6px 0">`+
@@ -2056,7 +2078,7 @@ function wavePlaybook(cs,ca){
   // bản chữ (thu gọn) cho ai cần giờ chính xác — người giỏi lên trên
   const sumSk2=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const rowsTxt=mem.slice().sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk2(b)-sumSk2(a))).map(p=>{ const b=sim.blocks[p.id]||[]; if(!b.length)return '';
-    const seq=b.map(s=>`${stIcon[s.k]||''}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span>`).join(' → ');
+    const seq=b.map(s=>`${stIcon[s.k]||''}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span><span style="color:#0f6e56;font-weight:600">${Math.round(s.ord||0)}đ</span>`).join(' → ');
     return `<div class="wstep" style="margin:2px 0">${p.boss?'👑 ':''}<b>${esc(p.name)}:</b> ${seq}</div>`;
   }).filter(Boolean).join('');
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
@@ -2135,7 +2157,7 @@ function renderWeekView(){
           if(!ppl.length)return `<tr><td>${stepno} ${esc(s.name)}${tag}</td><td colspan="2" style="color:var(--bad)">⛔ chưa có người</td></tr>`;
           const stRate=p=>{ if(trainMap[p.id]===s.key)return Math.max(p.skills[s.key]||0, benchmark(s.key)*(S.config.trainAssist||0.35)); const v=p.skills[s.key]||0; return v>0?v:floorRateOf(s); };
           const hrOf=p=>{ const hh=((cs.assignH&&cs.assignH[p.id]&&cs.assignH[p.id][s.key])||0)*fTime; if(hh<0.15)return ''; const od=Math.round(hh*stRate(p)); return ` <small class="hint">${hh.toFixed(1)}h · ${od}đ</small>`; }; // giờ làm (đã quy đổi theo thời gian hoàn thành) · số đơn xử lý
-          return `<tr><td>${stepno} ${esc(s.name)}${tag}</td><td>${ppl.map(p=>esc(p.name)+hrOf(p)+(trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':'')).join('<br>')}</td><td>${ppl.map(p=>skCell(p,s.key)).join('<br>')}</td></tr>`;
+          return `<tr><td>${stepno} ${esc(s.name)}${tag}</td><td>${ppl.map(p=>`<div class="ppl"><b>${esc(p.name)}</b>${hrOf(p)}${trainMap[p.id]===s.key?' <small class="hint">🎓đt</small>':''}</div>`).join('')}</td><td>${ppl.map(p=>`<div class="ppl">${skCell(p,s.key)}</div>`).join('')}</td></tr>`;
         }).join('');
       }
       // C) DÒNG LUÂN CHUYỂN: khâu nhanh xong dồn sang 2 khâu nghẽn
@@ -2156,9 +2178,17 @@ function renderWeekView(){
       const caSpare = (ca!=='Tối'&&dayMet) ? r.finalRest.filter(p=>p.caList.includes(ca)) : [];
       const caRested = ca!=='Tối' ? restedIds.map(id=>S.staff.find(x=>x.id===id)).filter(s=>s&&(reg[s.id]||[]).includes(ca)) : [];
       const restBlock = (caSpare.length||caRested.length)?`<div class="caRest"><b>💤 Cho nghỉ (ca ${ca.toLowerCase()})</b> <small class="hint">tích = xác nhận nghỉ, ghi chấm công</small><div style="margin-top:4px">${caSpare.map(p=>restChk(p.id,p.name,false)).join('')}${caRested.map(s=>restChk(s.id,s.name,true)).join('')}</div></div>`:'';
-      let wave='';
-      if(ca!=='Tối'){ const wkey=r.ds+'|'+ca; WAVE_CACHE[wkey]={cs,ca}; wave=`<button class="wavebtn" onclick="openWaveModal('${wkey}')">🌊 Kịch bản chạy ca — bấm xem sơ đồ toàn ca ▸</button>`; }
-      return `<div class="caSec">${header}${perf}${timeNote}<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead><tbody>${body}${crabRow}</tbody></table>${wave}${flowNote}${slowNote}${trainNote}${restBlock}</div>`;
+      const tblHead=`<thead><tr><th>Khâu</th><th>Nhân sự</th><th>Tốc độ</th></tr></thead>`;
+      let wave='', stageBtn='', tblInline='';
+      if(ca==='Tối'){
+        tblInline=`<table class="catbl"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup>${tblHead}<tbody>${body}${crabRow}</tbody></table>`;
+      } else {
+        const skey=r.ds+'|'+ca;
+        STAGE_CACHE[skey]={html:`<table class="catbl ctmodal">${tblHead}<tbody>${body}${crabRow}</tbody></table>`+flowNote+slowNote+trainNote, ca};
+        stageBtn=`<button class="stagebtn" onclick="openStageModal('${skey}')">📋 Phân người theo khâu (${cs.members.length} người) — bấm xem ▸</button>`;
+        const wkey=r.ds+'|'+ca; WAVE_CACHE[wkey]={cs,ca}; wave=`<button class="wavebtn" onclick="openWaveModal('${wkey}')">🌊 Kịch bản chạy ca — bấm xem sơ đồ toàn ca ▸</button>`;
+      }
+      return `<div class="caSec">${header}${perf}${timeNote}${tblInline}${stageBtn}${wave}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:(r.crab&&r.crab.boss)?`<div class="metric" style="color:#b8860b"><b>🦀 Crabthing:</b> 👑 Bà Chúa Kho lo (${Math.round(r.crabD)} SKU) — đủ</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
