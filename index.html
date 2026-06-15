@@ -115,6 +115,8 @@
   .flownote{margin-top:6px;background:#eafaf3;border:1px solid #bfe7d6;border-radius:8px;padding:6px 8px;font-size:11.5px;color:#0f6e56}
   .wavebtn{margin-top:6px;width:100%;text-align:left;cursor:pointer;background:#eef4ff;border:1px solid #cdd9f5;border-radius:8px;padding:9px 11px;font-weight:700;color:#274690;font-size:12px}
   .wavebtn:hover{background:#e0ebff;border-color:#9fb8ee}
+  .advnote{margin-top:6px;background:#fff3f0;border:1px solid #f3b9ad;border-radius:8px;padding:8px 10px;font-size:12px;color:#a3341f;line-height:1.55}
+  .advrow{margin-top:4px;padding:4px 7px;background:#fff;border:1px solid #f1cabf;border-radius:6px}
   .stagebtn{margin-top:6px;width:100%;text-align:left;cursor:pointer;background:#f0fbf5;border:1px solid #bfe6cf;border-radius:8px;padding:9px 11px;font-weight:700;color:#0f6e56;font-size:12px}
   .stagebtn:hover{background:#e3f7ec;border-color:#8fd4ab}
   .ctmodal{table-layout:auto;font-size:13px;margin-top:0}
@@ -527,7 +529,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-58 (biểu đồ sóng giãn lấp đầy chiều ngang modal, chữ trong ô không bị bóp/đè)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-61 (biểu đồ chỉ vẽ phần làm được trong ca; đề xuất so sánh thêm người vs thêm giờ kéo bao nhiêu đơn)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1968,7 +1970,7 @@ function fatigueFactor(min){ if(S.config&&S.config.fatigueOn===false)return 1; c
 function clockOf(ca,min){ const def=ca==='Chiều'?'13:30':'07:30'; let s=(S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def; const pr=String(s).split(':'); let tot=(+pr[0]||0)*60+(+pr[1]||0)+Math.round(min); tot=((tot%1440)+1440)%1440; const H=Math.floor(tot/60),M=tot%60; return H+'h'+(M<10?'0'+M:M); }
 // ===== MÔ PHỎNG SÓNG TỪNG PHÚT (Discrete Event Sim): ai làm gì, bao lâu, khi nào chuyển khâu =====
 // Bám lời giải cân bằng (LP) làm kế hoạch trạm; khâu của mình chưa có hàng -> xuống phụ khâu trước; cân bằng feed (ko nhồi người vượt mức khâu trước nuôi); có mệt mỏi.
-function simWave(mem,N){
+function simWave(mem,N,capMin){
   const ORDER=S.stages.map(s=>s.key); const iOf=k=>ORDER.indexOf(k); const caH=S.config.caHours||4; const dtH=1/60;
   const rate0=(p,k)=>(p.skills[k]||0);
   if(!mem.length||N<=0) return {makespan:0,blocks:{},bnK:ORDER[ORDER.length-1],sStart:{},sEnd:{}};
@@ -1981,7 +1983,7 @@ function simWave(mem,N){
   const openStep=(S.config&&S.config.waveOpenStep!=null?+S.config.waveOpenStep:18); // mở khâu so le: cả team quét tuần tự nhặt→kiểm→bọc→gói (nhịp lớn = sóng rõ)
   const cur={}; // BÁM TRẠM: khâu phút trước của mỗi người, ưu tiên ở lại nếu còn việc (giảm nhảy lung tung)
   let t=0,guard=0;
-  while(done[ORDER[ORDER.length-1]]<N-1e-6 && guard++<1800){
+  while(done[ORDER[ORDER.length-1]]<N-1e-6 && guard++<1800 && (!capMin||t<capMin)){
     const snap=Object.assign({},done);
     const WIP=k=>{const i=iOf(k); const openAt=i===0?0:confT+(i-1)*openStep; if(t<openAt)return 0; const up=i===0?N:snap[ORDER[i-1]];return up-snap[k];}; const R=k=>N-snap[k];
     const cap={}; ORDER.forEach(k=>cap[k]=0); const asg={};
@@ -2004,7 +2006,7 @@ function simWave(mem,N){
   }
   const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});blocks[p.id]=g;});
   let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
-  return {makespan:t,blocks,bnK,sStart,sEnd};
+  return {makespan:t,blocks,bnK,sStart,sEnd,doneOrders:Math.round(done[ORDER[ORDER.length-1]])};
 }
 // ===== MODAL KỊCH BẢN: bấm nút -> mở bảng riêng toàn màn hình, xem trọn khung thời gian =====
 const WAVE_CACHE={};
@@ -2031,22 +2033,50 @@ function openStageModal(key){
   ov.style.display='flex'; ov.onclick=e=>{if(e.target===ov)closeStageModal();};
 }
 function closeStageModal(){const ov=document.getElementById('stageModal'); if(ov)ov.remove();}
+// ===== PHÂN TÍCH THIẾU NGƯỜI: đề xuất thêm tối đa 3 người vào khâu nào để đạt chỉ tiêu; >3 người -> đề xuất thêm giờ =====
+function addRateAt(stKey,members){ const sk=members.filter(p=>!p.boss&&(p.skills[stKey]||0)>0).map(p=>p.skills[stKey]);
+  if(sk.length)return Math.max(1,Math.round(sk.reduce((a,b)=>a+b,0)/sk.length));
+  const st=S.stages.find(s=>s.key===stKey); return Math.max(1,Math.round((typeof benchmark==='function'?benchmark(stKey):0)||(st&&st.rate)||50)); }
+function staffingAdvice(cs){
+  const caH=S.config.caHours||4; const N=Math.round((cs&&cs.need)||0);
+  if(!cs||!cs.members||!cs.members.length||N<=0)return null;
+  const base=cs.members.map(p=>Object.assign({},p,{hours:caH}));
+  const cap0=Math.round(pipelineThroughput(base).cap); // số đơn TỐI ĐA làm được trong giờ ca (năng lực dây chuyền)
+  if(cap0>=N-Math.max(5,Math.round(N*0.01)))return null; // đủ -> không cảnh báo
+  // PHƯƠNG ÁN 1: thêm tối đa 3 người, mỗi lần vào khâu giúp tăng năng lực nhiều nhất
+  let team=base.slice(), cap=cap0; const adds=[];
+  for(let i=0;i<3 && cap<N-1; i++){ let best=null,bestCap=cap;
+    S.stages.forEach(st=>{ const r=addRateAt(st.key,cs.members); const vp={id:'__a'+i+st.key,name:'+1',boss:false,hours:caH,skills:{[st.key]:r}};
+      const c=Math.round(pipelineThroughput(team.concat([vp])).cap); if(c>bestCap+0.5){bestCap=c;best={key:st.key,vp};} });
+    if(!best)break; team=team.concat([best.vp]); cap=bestCap; adds.push(best.key); }
+  const cnt={}; adds.forEach(k=>cnt[k]=(cnt[k]||0)+1);
+  const addList=Object.keys(cnt).map(k=>`${cnt[k]} người → <b>${stageName(k)}</b>`);
+  const peopleGain=Math.max(0,cap-cap0), peopleEnough=cap>=N-1;
+  const ratePerH=cap0/caH, timeHours=ratePerH>0?(N-cap0)/ratePerH:0; // PHƯƠNG ÁN 2: thêm giờ (giữ người)
+  const rateAfter=cap/caH, comboH=(!peopleEnough&&rateAfter>0)?(N-cap)/rateAfter:0;
+  return {done0:cap0,doneAfter:cap,need:N,gap:N-cap0,addList,addCount:adds.length,peopleGain,peopleEnough,ratePerH:Math.round(ratePerH),timeHours,comboH};
+}
+function staffingNote(cs){ const adv=staffingAdvice(cs); if(!adv)return '';
+  const h1=`<div class="advrow">👥 <b>Thêm người</b> (${adv.addCount?adv.addList.join(' + '):'—'}): kéo thêm ~<b>${adv.peopleGain}</b> đơn → ${adv.doneAfter}/${adv.need}. ${adv.peopleEnough?'<span style="color:#0f6e56;font-weight:600">ĐỦ chỉ tiêu.</span>':`vẫn thiếu ${adv.need-adv.doneAfter} → <b>+ làm thêm ~${adv.comboH.toFixed(1)}h</b> nốt phần còn lại.`}</div>`;
+  const h2=`<div class="advrow">⏰ <b>Thêm giờ</b> (giữ nguyên người): mỗi giờ thêm ~<b>${adv.ratePerH}</b> đơn → cần thêm ~<b>${adv.timeHours.toFixed(1)}h</b> để đủ ${adv.need} đơn.</div>`;
+  return `<div class="advnote">🆘 <b>Ca thiếu năng lực</b> — trong giờ ca chỉ kịp ~<b>${adv.done0}/${adv.need}</b> đơn (thiếu <b>${adv.gap}</b>). Hai cách bù:${h1}${h2}<div style="margin-top:4px;font-size:11px;opacity:.85">→ Ưu tiên thêm người (tối đa 3) trước; còn thiếu mới kéo dài giờ; hoặc giãn bớt đơn sang ngày sau.</div></div>`;
+}
 // màu từng khâu cho biểu đồ
 const STAGE_COLOR={xacnhan:['#8b5cf6','XN'],nhat:['#3b82f6','Nhặt'],kiem:['#06b6d4','Kiểm'],bocxoc:['#f59e0b','Bọc'],goihop:['#ef4444','Gói'],bitdau:['#65a30d','Bịt'],tit:['#10b981','Tít']};
 // BIỂU ĐỒ THỜI GIAN (Gantt): mỗi người 1 dòng, khối màu = khâu, trục giờ, cuộn ngang được
-function waveGantt(mem,sim,ca){
+function waveGantt(mem,sim,ca,shiftMin){
   const stN=k=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;}; const clk=m=>clockOf(ca,m);
-  const mk=sim.makespan||1;
+  const mk=sim.makespan||1; const span=Math.max(mk, shiftMin||mk); // trục chạy đủ khung giờ ca
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
   if(!people.length) return '';
   const namesCol=`<div style="height:16px"></div>`+people.map(p=>`<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)}">${p.boss?'👑 ':''}${esc(p.name)}</div>`).join('');
   // ĐỊNH VỊ THEO %: biểu đồ luôn lấp đầy chiều ngang khả dụng; ca dài thì min-width cho cuộn
-  const minW=Math.round(mk*3.2), apxW=Math.max(820,minW), pct=v=>v/mk*100, hourPct=60/mk*100, quarterPct=15/mk*100;
-  let axis=''; for(let m=0;m<=mk+1;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
+  const minW=Math.round(span*3.2), apxW=Math.max(820,minW), pct=v=>v/span*100, hourPct=60/span*100, quarterPct=15/span*100;
+  let axis=''; for(let m=0;m<=span;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
   const axisRow=`<div style="position:relative;height:16px">${axis}</div>`;
   const trackRows=people.map(p=>{ const b=sim.blocks[p.id];
-    const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/mk*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
+    const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/span*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
       let lab=''; if(Wpx>=50)lab=`<span style="font-weight:600;white-space:nowrap">${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95;white-space:nowrap">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wpx>=20)lab=`<span style="font-weight:600;white-space:nowrap">${cc[1]}</span>`;
       return `<div title="${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${Lp.toFixed(3)}%;width:${Wp.toFixed(3)}%;top:2px;height:28px;background:${cc[0]};border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15;padding:0 2px;box-sizing:border-box">${lab}</div>`;}).join('');
     return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0,rgba(0,0,0,.10) 1px,transparent 1px,transparent ${hourPct.toFixed(3)}%),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0,rgba(0,0,0,.05) 1px,transparent 1px,transparent ${quarterPct.toFixed(3)}%)">${segs}</div>`;
@@ -2074,8 +2104,10 @@ function wavePlaybook(cs,ca){
     return `<div class="waveFull"><div class="wstep"><span class="wt">Đầu ca</span> Cả ca cùng <b>Nhặt</b> rồi cùng <b>Gói hộp</b>; ai rảnh dồn vào khâu chậm nhất.</div></div>`;
   }
   const mem=mem0.map(p=>Object.assign({},p,{hours:caH}));
-  const sim=simWave(mem,need); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
-  const gantt=waveGantt(mem,sim,ca);
+  const shiftMin=caH*60; const cap=Math.round(pipelineThroughput(mem).cap);
+  const overCa=cap<need-1; const chartN=overCa?Math.max(1,cap):need; // ca quá tải -> chỉ mô phỏng phần làm được trong ca
+  const sim=simWave(mem,chartN); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
+  const gantt=waveGantt(mem,sim,ca,shiftMin);
   // bản chữ (thu gọn) cho ai cần giờ chính xác — người giỏi lên trên
   const sumSk2=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const rowsTxt=mem.slice().sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk2(b)-sumSk2(a))).map(p=>{ const b=sim.blocks[p.id]||[]; if(!b.length)return '';
@@ -2083,14 +2115,18 @@ function wavePlaybook(cs,ca){
     return `<div class="wstep" style="margin:2px 0">${p.boss?'👑 ':''}<b>${esc(p.name)}:</b> ${seq}</div>`;
   }).filter(Boolean).join('');
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
-  const overCa=mk>caH*60+5;
-  const finishTxt=mk<=14*60?`<b>${clk(mk)}</b> (~${(mk/60).toFixed(1)}h)`:`~${(mk/60).toFixed(1)}h`;
+  const gap=Math.max(0,need-cap);
+  const adv = overCa ? staffingNote(cs) : '';
+  const finishLine = overCa
+    ? `🛑 Trong giờ ca làm được tối đa ~<b>${cap}</b>/${need} đơn — <span style="color:#d4537e;font-weight:700">THIẾU ${gap} đơn</span>. Phần mềm KHÔNG tự kéo dài giờ; xem đề xuất bù bên dưới.`
+    : `Xong cả ${need} đơn lúc <b>${clk(mk)}</b> (~${(mk/60).toFixed(1)}h).`;
   return `<div class="waveFull">`+
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
-    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian — mỗi người 1 dòng, màu = khâu, có mốc giờ trên từng khối:</div>`+
+    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút, số đơn trên từng khối:</div>`+
     gantt+ gapLines+
     `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand)">▸ Mô tả bằng chữ (giờ từng người)</summary>${rowsTxt}</details>`+
-    `<div class="wnote">⚙️ Đầu ca Bà Chúa Kho xác nhận, rồi cả team dồn <b>Nhặt</b> và lần lượt quét sang Kiểm → Bọc → Gói hộp; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. Ước xong cả ${need} đơn lúc ${finishTxt}${overCa?` <span style="color:#d4537e">⚠️ vượt ${caH}h/ca — cân nhắc thêm người hoặc kéo dài ca</span>`:''}. <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
+    `<div class="wnote">⚙️ Đầu ca Bà Chúa Kho xác nhận, rồi cả team dồn <b>Nhặt</b> và lần lượt quét sang Kiểm → Bọc → Gói hộp; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. ${finishLine} <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
+    adv+
     `</div>`;
 }
 /* ---- chi tiết TUẦN ---- */
@@ -2189,7 +2225,8 @@ function renderWeekView(){
         stageBtn=`<button class="stagebtn" onclick="openStageModal('${skey}')">📋 Phân người theo khâu (${cs.members.length} người) — bấm xem ▸</button>`;
         const wkey=r.ds+'|'+ca; WAVE_CACHE[wkey]={cs,ca}; wave=`<button class="wavebtn" onclick="openWaveModal('${wkey}')">🌊 Kịch bản chạy ca — bấm xem sơ đồ toàn ca ▸</button>`;
       }
-      return `<div class="caSec">${header}${perf}${timeNote}${tblInline}${stageBtn}${wave}${restBlock}</div>`;
+      const advNote = ca!=='Tối' ? staffingNote(cs) : '';
+      return `<div class="caSec">${header}${perf}${advNote}${timeNote}${tblInline}${stageBtn}${wave}${restBlock}</div>`;
     }).join('') : '';
     const crabWarn = (r.crabD>0&&r.crab.short)?`<div class="metric" style="color:var(--bad)"><b>🦀 Crabthing THIẾU:</b> cần ${Math.round(r.crabD)} SKU, mới có ${Math.round(r.crab.cap)}</div>`:(r.crab&&r.crab.boss)?`<div class="metric" style="color:#b8860b"><b>🦀 Crabthing:</b> 👑 Bà Chúa Kho lo (${Math.round(r.crabD)} SKU) — đủ</div>`:'';
     // thanh TỐC ĐỘ team chạy đơn theo khâu (đơn/h) so với chuẩn + độ phủ
