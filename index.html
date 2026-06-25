@@ -529,7 +529,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-62 (biểu đồ: đánh dấu ★ làm chính / ↗ hỗ trợ; cột tên ghi khâu chính của từng người)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-63 (bảng nhân sự: nút ★ đánh dấu skill nổi bật → engine ưu tiên xếp người đó vào khâu)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -874,6 +874,7 @@ function renderStaff(){ /* gộp vào renderSkillMatrix */ }
 function skillCellBg(v,bm){v=+v||0;const r=bm>0?v/bm:0;
   if(v<=0)return '#fbe3e1'; if(r<0.4)return '#fde3c8'; if(r<0.7)return '#fdf3d0'; if(r<1)return '#e7f3da'; return '#d3efde';}
 function setSkill(i,key,val){ S.staff[i].skills[key]=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
+function toggleSkillStar(i,key){ const p=S.staff[i]; if(!p.starSkill)p.starSkill={}; if(p.starSkill[key])delete p.starSkill[key]; else p.starSkill[key]=true; saveAll(); renderSkillMatrix(); }
 function setProd(i,val){ S.staff[i].prod=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
 function staffScore(p){ return (p.prod>0?+p.prod:0)||soloRate(p.skills); } // tốc độ trọn gói (đơn/h) — cao thì xếp lên đầu
 function setStageRate(i,v){ S.stages[i].rate=Math.max(1,+v||1); saveAll(); renderStageRates(); renderSkillMatrix(); }
@@ -892,7 +893,7 @@ function renderSkillMatrix(){
     <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
     <td style="text-align:center;padding:3px;background:#eef4ff"><input type="number" min="0" value="${p.prod!=null?p.prod:20}" title="Tốc độ trọn gói (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ. TB 20." style="width:64px;text-align:center;font-weight:700;border:1px solid #9bbcf0;background:#fff" onchange="setProd(${i},this.value)"></td>
-    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
+    ${S.stages.map(s=>{const v=p.skills[s.key]??0;const st=(p.starSkill&&p.starSkill[s.key]);return `<td style="text-align:center;padding:3px"><div style="display:flex;flex-direction:column;align-items:center;gap:1px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"><span onclick="toggleSkillStar(${i},'${s.key}')" title="Đánh dấu skill NỔI BẬT — engine ưu tiên xếp người này vào khâu" style="cursor:pointer;font-size:13px;line-height:1;color:${st?'#f5a623':'#cfd6e0'}">★</span></div></td>`;}).join('')}
     <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
     <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
@@ -1022,7 +1023,8 @@ function pipelineFeasible(team, N, rec){
   const nsk=stages.map(st=>team.filter(p=>(p.skills[st.key]||0)>0).length);
   const order=stages.map((_,ki)=>ki).sort((a,b)=>(nsk[a]-nsk[b])||(tot[a]-tot[b]));
   for(const ki of order){ const st=stages[ki]; let need=N;
-    const pi=team.map((p,i)=>i).sort((a,b)=>effRateOf(team[b],st)-effRateOf(team[a],st));
+    const starB=p=>(p.starSkill&&p.starSkill[st.key])?1.15:1; // ★ skill nổi bật -> ưu tiên nhẹ 15% khi xếp vào khâu
+    const pi=team.map((p,i)=>i).sort((a,b)=>effRateOf(team[b],st)*starB(team[b])-effRateOf(team[a],st)*starB(team[a]));
     for(const i of pi){ if(rem[i]<=1e-9)continue; const rt=effRateOf(team[i],st); if(rt<=0)continue;
       const t=Math.min(rem[i], need/rt); need-=t*rt; rem[i]-=t; if(rec&&t>1e-6)assign[i][st.key]=(assign[i][st.key]||0)+t;
       if(need<=1e-6)break; }
