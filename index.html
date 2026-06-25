@@ -529,7 +529,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-65 (làm chính = người THƯỜNG mạnh nhất khâu; Bà Chúa Kho chỉ làm chính khâu thiếu người; mỗi khâu 1 người chính)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-66 (xác nhận chỉ 1 người/lúc; bám trạm chặt + gộp mẩu vụn → khối dài, ít nhảy lung tung)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1988,25 +1988,29 @@ function simWave(mem,N,capMin){
   while(done[ORDER[ORDER.length-1]]<N-1e-6 && guard++<1800 && (!capMin||t<capMin)){
     const snap=Object.assign({},done);
     const WIP=k=>{const i=iOf(k); const openAt=i===0?0:confT+(i-1)*openStep; if(t<openAt)return 0; const up=i===0?N:snap[ORDER[i-1]];return up-snap[k];}; const R=k=>N-snap[k];
-    const cap={}; ORDER.forEach(k=>cap[k]=0); const asg={};
+    const cap={}; ORDER.forEach(k=>cap[k]=0); const nAt={}; const asg={};
+    const slotMax=k=>k==='xacnhan'?1:1e9; // XÁC NHẬN chỉ 1 người/lúc (1 máy) — muốn đổi người thì người trước xong người sau mới vào
     const ord=mem.slice().sort((a,b)=>Math.max.apply(null,ORDER.map(k=>rate0(b,k)))-Math.max.apply(null,ORDER.map(k=>rate0(a,k))));
-    for(const p of ord){ const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6;
+    for(const p of ord){ const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6; const slot=k=>(nAt[k]||0)<slotMax(k);
       const fedOK=k=>{const i=iOf(k); if(i===0)return true; const up=ORDER[i-1]; return R(up)<=1e-6||cap[k]<cap[up]+1e-6;};
-      const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k);
+      const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k)&&slot(k);
       let pick=null;
-      // BÁM TRẠM: nếu khâu đang làm còn nhiều việc và còn hàng -> ở lại (không nhảy)
-      if(cur[p.id]&&okK(cur[p.id])&&R(cur[p.id])>N*0.05) pick=cur[p.id];
+      // BÁM TRẠM CHẶT: đã vào khâu nào thì làm TỚI KHI HẾT HÀNG mới chuyển (chỉ rời khi khâu hết việc) -> ít vụn
+      if(cur[p.id]&&eff(cur[p.id])>0&&R(cur[p.id])>N*0.02&&room(cur[p.id])&&slot(cur[p.id])) pick=cur[p.id];
       if(!pick){ let plan=ORDER.filter(k=>budget[p.id][k]>0&&okK(k)).sort((a,b)=>iOf(a)-iOf(b)); pick=plan[0]; }
       if(!pick)pick=ORDER.filter(okK).sort((a,b)=>iOf(a)-iOf(b))[0];
-      if(!pick)pick=ORDER.filter(k=>eff(k)>0&&R(k)>1e-6&&room(k)).sort((a,b)=>iOf(a)-iOf(b))[0];
-      if(!pick){cur[p.id]=null;continue;} asg[p.id]=pick; cur[p.id]=pick; cap[pick]+=eff(pick); if(budget[p.id][pick]>0)budget[p.id][pick]--;
+      if(!pick)pick=ORDER.filter(k=>eff(k)>0&&R(k)>1e-6&&room(k)&&slot(k)).sort((a,b)=>iOf(a)-iOf(b))[0];
+      if(!pick){cur[p.id]=null;continue;} asg[p.id]=pick; cur[p.id]=pick; cap[pick]+=eff(pick); nAt[pick]=(nAt[pick]||0)+1; if(budget[p.id][pick]>0)budget[p.id][pick]--;
     }
     const advK={};
     ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); advK[k]=adv; if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
     mem.forEach(p=>{const k=asg[p.id];if(!k)return; const myr=rate0(p,k)*fatigueFactor(t); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
     t++;
   }
-  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});blocks[p.id]=g;});
+  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});
+    // despeckle: mẩu ngắn (<8') kẹp giữa 2 đoạn CÙNG khâu -> gộp vào khâu bao quanh
+    let ch=true; while(ch){ch=false; for(let i=1;i<g.length-1;i++){ if(g[i].to-g[i].from<8 && g[i-1].k===g[i+1].k && g[i-1].k!==g[i].k){ g[i-1].to=g[i+1].to; g[i-1].ord=(g[i-1].ord||0)+(g[i].ord||0)+(g[i+1].ord||0); g.splice(i,2); ch=true; break; } } }
+    blocks[p.id]=g;});
   let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
   return {makespan:t,blocks,bnK,sStart,sEnd,doneOrders:Math.round(done[ORDER[ORDER.length-1]])};
 }
