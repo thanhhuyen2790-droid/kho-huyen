@@ -49,6 +49,20 @@
   .b-closed{background:#eceef2;color:#9aa1b1}
   .daygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
   .day{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff}
+  /* DASHBOARD: dải 7 ngày + bảng chi tiết */
+  .daystrip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:14px}
+  .ptile{border:1px solid var(--line);border-radius:10px;padding:7px 6px;cursor:pointer;background:#fff;transition:transform .1s,box-shadow .1s;overflow:hidden}
+  .ptile:hover{border-color:var(--brand);transform:translateY(-1px)}
+  .ptile.sel{border:2px solid var(--brand);box-shadow:0 6px 18px rgba(47,109,246,.22);padding:6px 5px}
+  .ptile.today{background:#fffdf3}
+  .ptile.ok{border-left:4px solid var(--ok)} .ptile.short_people,.ptile.short_both,.ptile.short_crab,.ptile.short_skill{border-left:4px solid var(--bad)} .ptile.surplus{border-left:4px solid var(--warn)} .ptile.closed{opacity:.6}
+  .ptile .pt-d{font-weight:700;font-size:11px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ptile .pt-status{display:inline-block;margin-bottom:4px;font-size:9.5px}
+  .ptile .pt-row{font-size:11px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .daydet{width:100%}
+  .caRow{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
+  .caRow .caSec{flex:1 1 360px;min-width:300px;border-top:0;border:1px solid var(--line);border-radius:10px;padding:9px;margin-top:0}
+  @media(max-width:760px){ .daystrip{grid-template-columns:repeat(7,minmax(96px,1fr));overflow-x:auto} .caRow .caSec{flex:1 1 100%} }
   .day.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
   .day.warn{border-color:var(--warn)}
   .day .dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
@@ -353,6 +367,18 @@
 
   <!-- TAB: PHÂN BỔ NHÂN SỰ -->
   <section class="tab" id="tab-plan">
+    <div class="card" style="border:1.5px solid #bcdcff;background:#f6fbff">
+      <h2>📲 Cập nhật đơn thực tế đầu ngày</h2>
+      <p class="sub">Sáng sớm xem số đơn thực trên sàn (Shopee/Tiktok) rồi nhập vào đây kèm <b>% dự kiến tăng thêm</b> trong ngày. Phần mềm sẽ dùng số này (thay số dự kiến) để phân bổ người chuẩn hơn và cảnh báo nếu thiếu.</p>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div><label class="fld" style="margin:0 0 2px">Ngày</label><input id="do-date" type="date" style="max-width:150px"></div>
+        <div><label class="fld" style="margin:0 0 2px">Đơn thực tế (sàn)</label><input id="do-actual" type="number" min="0" oninput="updateDoPreview()" style="max-width:130px" placeholder="vd 605"></div>
+        <div><label class="fld" style="margin:0 0 2px">% tăng dự kiến</label><input id="do-uplift" type="number" min="0" oninput="updateDoPreview()" style="max-width:110px" placeholder="vd 20"></div>
+        <button class="btn" onclick="saveDayOrders()">Lưu &amp; phân bổ lại</button>
+        <span id="do-preview" class="hint" style="align-self:center;font-size:13px"></span>
+      </div>
+      <div id="do-list" style="margin-top:10px"></div>
+    </div>
     <div class="card">
       <h2>Phân bổ nhân sự &amp; cảnh báo</h2>
       <p class="sub">Xanh = đủ người · Vàng = thừa · Đỏ = thiếu. Xem tổng quan theo tháng, bấm một tuần để xem chi tiết.</p>
@@ -529,7 +555,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-66 (xác nhận chỉ 1 người/lúc; bám trạm chặt + gộp mẩu vụn → khối dài, ít nhảy lung tung)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-68 (giao diện Phân bổ: dải 7 ngày bấm chọn + bảng chi tiết ngày, ca Sáng/Chiều cạnh nhau)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -577,6 +603,7 @@ function defaultState(){
     pending:[], // yêu cầu nhân sự gửi chờ duyệt
     restDays:{}, // { 'YYYY-MM-DD': [staffId,...] } — đăng ký nhưng ĐƯỢC CHO NGHỈ (đã xác nhận, ghi vào chấm công)
     train:{}, // { 'YYYY-MM-DD': { staffId: stageKey } } — admin bổ sung người vào khâu nút thắt (đào tạo + trợ lực)
+    dayOrders:{}, // { 'YYYY-MM-DD': { actual:số đơn đầu ngày, uplift:% tăng dự kiến } } — ghi đè đơn dự kiến bằng số THỰC TẾ
     _skillUnit:'donh'
   };
 }
@@ -1073,7 +1100,10 @@ function baseType(d){
 }
 function dayType(d){ return isClosed(d) ? 'closed' : baseType(d).t; }
 // đơn Shopee+Tiktok sàn sinh ra trong ngày (Crabthing tách riêng)
+// ĐƠN THỰC TẾ đầu ngày (nếu admin đã nhập): số đơn thực × (1 + % tăng dự kiến) — ghi đè số dự kiến
+function dayEstimate(ds){ const o=S.dayOrders&&S.dayOrders[ds]; if(o&&(+o.actual)>0) return Math.round((+o.actual)*(1+(+o.uplift||0)/100)); return null; }
 function rawOrders(d){
+  const ov=dayEstimate(fmt(d)); if(ov!=null) return ov; // đã có số thực tế -> dùng luôn (đã gồm cả đơn dồn thực tế)
   const mi=d.getMonth();
   const base=S.demand.base.shopee[mi]+S.demand.base.tiktok[mi];
   return base*baseType(d).f;
@@ -1090,6 +1120,7 @@ function crabDemandOn(d){
 // đơn kho phải xử lý trong ngày: ngày nghỉ = 0 (dồn sang ngày làm kế tiếp); ngày làm = đơn của mình + đơn các ngày nghỉ liền trước
 function ordersOn(d){
   if(isClosed(d))return 0;
+  const ov=dayEstimate(fmt(d)); if(ov!=null) return ov; // số thực tế đã gồm đơn dồn -> không cộng dồn thêm
   let total=rawOrders(d);
   let prev=new Date(d); prev.setDate(prev.getDate()-1);
   let guard=0;
@@ -2150,6 +2181,22 @@ function wavePlaybook(cs,ca){
     `</div>`;
 }
 /* ---- chi tiết TUẦN ---- */
+let PLAN_SEL=null; // ô ngày đang chọn trong dải 7 ngày
+function isTodayD(d){const n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+function planTile(r,i){
+  const today=isTodayD(r.d); const dlbl=`${DOW[i]} ${r.d.getDate()}/${r.d.getMonth()+1}`;
+  if(r.type==='closed') return `<div class="ptile closed ${i===PLAN_SEL?'sel':''} ${today?'today':''}" onclick="selectPlanDay(${i})"><div class="pt-d">${dlbl}</div><div class="pt-status badge b-closed">Đóng cửa</div></div>`;
+  const hc=headcountText(r); const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);
+  const met=capM>=r.orders-caSlack(r.orders)-1e-6; const realSel=r.ord.selected.filter(p=>!p.boss).length; const bossIn=r.ord.selected.some(p=>p.boss);
+  return `<div class="ptile ${r.status} ${i===PLAN_SEL?'sel':''} ${today?'today':''}" onclick="selectPlanDay(${i})">
+    <div class="pt-d">${dlbl}${today?' <span style="color:var(--brand)">•</span>':''}</div>
+    <div class="pt-status badge ${hc.cls}">${hc.text}</div>
+    <div class="pt-row">📦 <b>${Math.round(r.orders)}</b> đơn</div>
+    <div class="pt-row">👥 ${realSel}${bossIn?'+👑':''} · NL <b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b></div>
+    ${!met?`<div class="pt-row" style="color:var(--bad);font-weight:700">⚠️ thiếu ${Math.round(r.orders-capM)}đ</div>`:(r.kind==='surplus'?`<div class="pt-row" style="color:var(--warn)">thừa người</div>`:`<div class="pt-row" style="color:var(--ok)">✓ đủ</div>`)}${r.summon?`<div class="pt-row" style="color:#b8860b">👑 gọi bù</div>`:''}
+  </div>`;
+}
+function selectPlanDay(i){ PLAN_SEL=i; document.querySelectorAll('.dayDetailWrap').forEach((el)=>{el.style.display=(+el.dataset.i===i?'block':'none');}); document.querySelectorAll('.ptile').forEach((el,j)=>el.classList.toggle('sel',j===i)); }
 function renderWeekView(){
   defaultPlanWeek();
   const {result,acc}=planWeek();
@@ -2166,7 +2213,9 @@ function renderWeekView(){
     <div class="box"><div class="l">Lệch kỹ năng</div><div class="n" style="color:var(--warn)">${cSkill}</div></div>`;
 
   const ws=document.getElementById('plan-week').value;
-  document.getElementById('planGrid').innerHTML=optBanner(ws)+result.map((r,i)=>{
+  if(PLAN_SEL==null||PLAN_SEL>=result.length){let ti=result.findIndex(rr=>isTodayD(rr.d)); if(ti<0)ti=result.findIndex(rr=>rr.type!=='closed'); PLAN_SEL=ti<0?0:ti;}
+  const stripHtml=`<div class="daystrip">`+result.map((r,i)=>planTile(r,i)).join('')+`</div>`;
+  const detailsHtml=result.map((r,i)=>{
     const tb={normal:['b-normal','Ngày thường'],mid:['b-mid','Ngày 15&25'],peak:['b-peak','Ngày trùng'],closed:['b-closed','Đóng cửa']}[r.type];
     const hc=headcountText(r);
     const sb=hc.cls, st=hc.text;
@@ -2265,18 +2314,19 @@ function renderWeekView(){
         </div>`;
       }).join('')}</div>` : '';
     const _nowT=new Date(); const isToday = r.d.getFullYear()===_nowT.getFullYear()&&r.d.getMonth()===_nowT.getMonth()&&r.d.getDate()===_nowT.getDate(); // so theo NGÀY ĐỊA PHƯƠNG (tránh lệch múi giờ của toISOString)
-    return `<div class="day ${r.status}${isToday?' today':''}">
+    return `<div class="dayDetailWrap" data-i="${i}" style="display:${i===PLAN_SEL?'block':'none'}"><div class="day daydet ${r.status}${isToday?' today':''}">
       <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${realSel}</b> người${bossIn?' <span class="pill" style="color:#b8860b" title="Bà Chúa Kho được triệu hồi, ngoài người đăng ký">+👑</span>':''} · đăng ký <b>${totalReg}</b></div>
       ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">Xuất trận cân team — ${esc(r.summon)}</span></div>`:''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
-      ${caSection}
+      <div class="caRow">${caSection}</div>
       ${stagesHtml}
       ${crabWarn}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
-    </div>`;
+    </div></div>`;
   }).join('');
+  document.getElementById('planGrid').innerHTML=optBanner(ws)+stripHtml+detailsHtml;
 
   const act=S.staff.filter(s=>s.active);
   const max=Math.max(1,...act.map(s=>acc[s.id]||0));
@@ -2374,8 +2424,17 @@ function renderAll(){
   const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
   const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
   const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
-  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();
+  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();
   populateUserStaff();renderReg();updateNavBadge();
+}
+// ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY =====
+function updateDoPreview(){ const a=Math.max(0,+((document.getElementById('do-actual')||{}).value)||0); const u=Math.max(0,+((document.getElementById('do-uplift')||{}).value)||0); const p=document.getElementById('do-preview'); if(p)p.innerHTML=a>0?`→ ước <b style="color:#1d6fe0">${Math.round(a*(1+u/100))}</b> đơn cho cả ngày`:''; }
+function saveDayOrders(){ const ds=(document.getElementById('do-date')||{}).value; const a=Math.max(0,+((document.getElementById('do-actual')||{}).value)||0); const u=Math.max(0,+((document.getElementById('do-uplift')||{}).value)||0); if(!ds||a<=0){alert('Hãy chọn ngày và nhập số đơn thực tế (>0).');return;} S.dayOrders=S.dayOrders||{}; S.dayOrders[ds]={actual:a,uplift:u}; saveAll(); renderDayOrders(); renderAll(); }
+function clearDayOrders(ds){ if(S.dayOrders)delete S.dayOrders[ds]; saveAll(); renderDayOrders(); renderAll(); }
+function renderDayOrders(){ const dd=document.getElementById('do-date'); if(dd&&!dd.value)dd.value=fmt(new Date()); updateDoPreview();
+  const list=document.getElementById('do-list'); if(!list)return; const wd=['CN','T2','T3','T4','T5','T6','T7'];
+  const keys=Object.keys(S.dayOrders||{}).filter(k=>(+((S.dayOrders[k]||{}).actual))>0).sort();
+  list.innerHTML = keys.length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:3px">Ngày đã chốt số thực tế (ghi đè dự kiến):</div>`+keys.map(ds=>{const o=S.dayOrders[ds];const est=dayEstimate(ds);let lb=ds.slice(5);try{const dt=parse(ds);lb=wd[dt.getDay()]+' '+ds.slice(5);}catch(e){}return `<span style="display:inline-flex;align-items:center;gap:5px;margin:2px 4px 2px 0;padding:3px 8px;border-radius:7px;background:#e7f0ff;font-size:12px">${lb}: <b>${o.actual}đ</b> +${o.uplift||0}% → <b style="color:#1d6fe0">${est}</b> <span onclick="clearDayOrders('${ds}')" title="Xoá, quay lại số dự kiến" style="cursor:pointer;color:#c0392b;font-weight:700">✕</span></span>`;}).join('') : `<span class="hint">Chưa chốt ngày nào — đang dùng số dự kiến theo tháng.</span>`;
 }
 // nạp dữ liệu cloud (nếu có) rồi mở app
 (async function boot(){

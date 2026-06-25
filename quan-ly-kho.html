@@ -49,6 +49,20 @@
   .b-closed{background:#eceef2;color:#9aa1b1}
   .daygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
   .day{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff}
+  /* DASHBOARD: dải 7 ngày + bảng chi tiết */
+  .daystrip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:14px}
+  .ptile{border:1px solid var(--line);border-radius:10px;padding:7px 6px;cursor:pointer;background:#fff;transition:transform .1s,box-shadow .1s;overflow:hidden}
+  .ptile:hover{border-color:var(--brand);transform:translateY(-1px)}
+  .ptile.sel{border:2px solid var(--brand);box-shadow:0 6px 18px rgba(47,109,246,.22);padding:6px 5px}
+  .ptile.today{background:#fffdf3}
+  .ptile.ok{border-left:4px solid var(--ok)} .ptile.short_people,.ptile.short_both,.ptile.short_crab,.ptile.short_skill{border-left:4px solid var(--bad)} .ptile.surplus{border-left:4px solid var(--warn)} .ptile.closed{opacity:.6}
+  .ptile .pt-d{font-weight:700;font-size:11px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ptile .pt-status{display:inline-block;margin-bottom:4px;font-size:9.5px}
+  .ptile .pt-row{font-size:11px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .daydet{width:100%}
+  .caRow{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
+  .caRow .caSec{flex:1 1 360px;min-width:300px;border-top:0;border:1px solid var(--line);border-radius:10px;padding:9px;margin-top:0}
+  @media(max-width:760px){ .daystrip{grid-template-columns:repeat(7,minmax(96px,1fr));overflow-x:auto} .caRow .caSec{flex:1 1 100%} }
   .day.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
   .day.warn{border-color:var(--warn)}
   .day .dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
@@ -353,6 +367,18 @@
 
   <!-- TAB: PHÂN BỔ NHÂN SỰ -->
   <section class="tab" id="tab-plan">
+    <div class="card" style="border:1.5px solid #bcdcff;background:#f6fbff">
+      <h2>📲 Cập nhật đơn thực tế đầu ngày</h2>
+      <p class="sub">Sáng sớm xem số đơn thực trên sàn (Shopee/Tiktok) rồi nhập vào đây kèm <b>% dự kiến tăng thêm</b> trong ngày. Phần mềm sẽ dùng số này (thay số dự kiến) để phân bổ người chuẩn hơn và cảnh báo nếu thiếu.</p>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div><label class="fld" style="margin:0 0 2px">Ngày</label><input id="do-date" type="date" style="max-width:150px"></div>
+        <div><label class="fld" style="margin:0 0 2px">Đơn thực tế (sàn)</label><input id="do-actual" type="number" min="0" oninput="updateDoPreview()" style="max-width:130px" placeholder="vd 605"></div>
+        <div><label class="fld" style="margin:0 0 2px">% tăng dự kiến</label><input id="do-uplift" type="number" min="0" oninput="updateDoPreview()" style="max-width:110px" placeholder="vd 20"></div>
+        <button class="btn" onclick="saveDayOrders()">Lưu &amp; phân bổ lại</button>
+        <span id="do-preview" class="hint" style="align-self:center;font-size:13px"></span>
+      </div>
+      <div id="do-list" style="margin-top:10px"></div>
+    </div>
     <div class="card">
       <h2>Phân bổ nhân sự &amp; cảnh báo</h2>
       <p class="sub">Xanh = đủ người · Vàng = thừa · Đỏ = thiếu. Xem tổng quan theo tháng, bấm một tuần để xem chi tiết.</p>
@@ -529,7 +555,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-62 (biểu đồ: đánh dấu ★ làm chính / ↗ hỗ trợ; cột tên ghi khâu chính của từng người)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-68 (giao diện Phân bổ: dải 7 ngày bấm chọn + bảng chi tiết ngày, ca Sáng/Chiều cạnh nhau)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -577,6 +603,7 @@ function defaultState(){
     pending:[], // yêu cầu nhân sự gửi chờ duyệt
     restDays:{}, // { 'YYYY-MM-DD': [staffId,...] } — đăng ký nhưng ĐƯỢC CHO NGHỈ (đã xác nhận, ghi vào chấm công)
     train:{}, // { 'YYYY-MM-DD': { staffId: stageKey } } — admin bổ sung người vào khâu nút thắt (đào tạo + trợ lực)
+    dayOrders:{}, // { 'YYYY-MM-DD': { actual:số đơn đầu ngày, uplift:% tăng dự kiến } } — ghi đè đơn dự kiến bằng số THỰC TẾ
     _skillUnit:'donh'
   };
 }
@@ -874,6 +901,7 @@ function renderStaff(){ /* gộp vào renderSkillMatrix */ }
 function skillCellBg(v,bm){v=+v||0;const r=bm>0?v/bm:0;
   if(v<=0)return '#fbe3e1'; if(r<0.4)return '#fde3c8'; if(r<0.7)return '#fdf3d0'; if(r<1)return '#e7f3da'; return '#d3efde';}
 function setSkill(i,key,val){ S.staff[i].skills[key]=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
+function toggleSkillStar(i,key){ const p=S.staff[i]; if(!p.starSkill)p.starSkill={}; if(p.starSkill[key])delete p.starSkill[key]; else p.starSkill[key]=true; saveAll(); renderSkillMatrix(); }
 function setProd(i,val){ S.staff[i].prod=Math.max(0,+val||0); saveAll(); renderSkillMatrix(); }
 function staffScore(p){ return (p.prod>0?+p.prod:0)||soloRate(p.skills); } // tốc độ trọn gói (đơn/h) — cao thì xếp lên đầu
 function setStageRate(i,v){ S.stages[i].rate=Math.max(1,+v||1); saveAll(); renderStageRates(); renderSkillMatrix(); }
@@ -892,7 +920,7 @@ function renderSkillMatrix(){
     <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
     <td style="text-align:center;padding:3px;background:#eef4ff"><input type="number" min="0" value="${p.prod!=null?p.prod:20}" title="Tốc độ trọn gói (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ. TB 20." style="width:64px;text-align:center;font-weight:700;border:1px solid #9bbcf0;background:#fff" onchange="setProd(${i},this.value)"></td>
-    ${S.stages.map(s=>{const v=p.skills[s.key]??0;return `<td style="text-align:center;padding:3px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"></td>`;}).join('')}
+    ${S.stages.map(s=>{const v=p.skills[s.key]??0;const st=(p.starSkill&&p.starSkill[s.key]);return `<td style="text-align:center;padding:3px"><div style="display:flex;flex-direction:column;align-items:center;gap:1px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"><span onclick="toggleSkillStar(${i},'${s.key}')" title="Đánh dấu skill NỔI BẬT — engine ưu tiên xếp người này vào khâu" style="cursor:pointer;font-size:13px;line-height:1;color:${st?'#f5a623':'#cfd6e0'}">★</span></div></td>`;}).join('')}
     <td style="text-align:center"><input type="checkbox" ${p.active?'checked':''} onchange="S.staff[${i}].active=this.checked;saveAll();renderSkillMatrix()"></td>
     <td><button class="btn danger sm" onclick="delStaff(${i})">Xoá</button></td>
   </tr>`}).join('');
@@ -1022,7 +1050,8 @@ function pipelineFeasible(team, N, rec){
   const nsk=stages.map(st=>team.filter(p=>(p.skills[st.key]||0)>0).length);
   const order=stages.map((_,ki)=>ki).sort((a,b)=>(nsk[a]-nsk[b])||(tot[a]-tot[b]));
   for(const ki of order){ const st=stages[ki]; let need=N;
-    const pi=team.map((p,i)=>i).sort((a,b)=>effRateOf(team[b],st)-effRateOf(team[a],st));
+    const starB=p=>(p.starSkill&&p.starSkill[st.key])?1.15:1; // ★ skill nổi bật -> ưu tiên nhẹ 15% khi xếp vào khâu
+    const pi=team.map((p,i)=>i).sort((a,b)=>effRateOf(team[b],st)*starB(team[b])-effRateOf(team[a],st)*starB(team[a]));
     for(const i of pi){ if(rem[i]<=1e-9)continue; const rt=effRateOf(team[i],st); if(rt<=0)continue;
       const t=Math.min(rem[i], need/rt); need-=t*rt; rem[i]-=t; if(rec&&t>1e-6)assign[i][st.key]=(assign[i][st.key]||0)+t;
       if(need<=1e-6)break; }
@@ -1071,7 +1100,10 @@ function baseType(d){
 }
 function dayType(d){ return isClosed(d) ? 'closed' : baseType(d).t; }
 // đơn Shopee+Tiktok sàn sinh ra trong ngày (Crabthing tách riêng)
+// ĐƠN THỰC TẾ đầu ngày (nếu admin đã nhập): số đơn thực × (1 + % tăng dự kiến) — ghi đè số dự kiến
+function dayEstimate(ds){ const o=S.dayOrders&&S.dayOrders[ds]; if(o&&(+o.actual)>0) return Math.round((+o.actual)*(1+(+o.uplift||0)/100)); return null; }
 function rawOrders(d){
+  const ov=dayEstimate(fmt(d)); if(ov!=null) return ov; // đã có số thực tế -> dùng luôn (đã gồm cả đơn dồn thực tế)
   const mi=d.getMonth();
   const base=S.demand.base.shopee[mi]+S.demand.base.tiktok[mi];
   return base*baseType(d).f;
@@ -1088,6 +1120,7 @@ function crabDemandOn(d){
 // đơn kho phải xử lý trong ngày: ngày nghỉ = 0 (dồn sang ngày làm kế tiếp); ngày làm = đơn của mình + đơn các ngày nghỉ liền trước
 function ordersOn(d){
   if(isClosed(d))return 0;
+  const ov=dayEstimate(fmt(d)); if(ov!=null) return ov; // số thực tế đã gồm đơn dồn -> không cộng dồn thêm
   let total=rawOrders(d);
   let prev=new Date(d); prev.setDate(prev.getDate()-1);
   let guard=0;
@@ -1986,25 +2019,29 @@ function simWave(mem,N,capMin){
   while(done[ORDER[ORDER.length-1]]<N-1e-6 && guard++<1800 && (!capMin||t<capMin)){
     const snap=Object.assign({},done);
     const WIP=k=>{const i=iOf(k); const openAt=i===0?0:confT+(i-1)*openStep; if(t<openAt)return 0; const up=i===0?N:snap[ORDER[i-1]];return up-snap[k];}; const R=k=>N-snap[k];
-    const cap={}; ORDER.forEach(k=>cap[k]=0); const asg={};
+    const cap={}; ORDER.forEach(k=>cap[k]=0); const nAt={}; const asg={};
+    const slotMax=k=>k==='xacnhan'?1:1e9; // XÁC NHẬN chỉ 1 người/lúc (1 máy) — muốn đổi người thì người trước xong người sau mới vào
     const ord=mem.slice().sort((a,b)=>Math.max.apply(null,ORDER.map(k=>rate0(b,k)))-Math.max.apply(null,ORDER.map(k=>rate0(a,k))));
-    for(const p of ord){ const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6;
+    for(const p of ord){ const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6; const slot=k=>(nAt[k]||0)<slotMax(k);
       const fedOK=k=>{const i=iOf(k); if(i===0)return true; const up=ORDER[i-1]; return R(up)<=1e-6||cap[k]<cap[up]+1e-6;};
-      const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k);
+      const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k)&&slot(k);
       let pick=null;
-      // BÁM TRẠM: nếu khâu đang làm còn nhiều việc và còn hàng -> ở lại (không nhảy)
-      if(cur[p.id]&&okK(cur[p.id])&&R(cur[p.id])>N*0.05) pick=cur[p.id];
+      // BÁM TRẠM CHẶT: đã vào khâu nào thì làm TỚI KHI HẾT HÀNG mới chuyển (chỉ rời khi khâu hết việc) -> ít vụn
+      if(cur[p.id]&&eff(cur[p.id])>0&&R(cur[p.id])>N*0.02&&room(cur[p.id])&&slot(cur[p.id])) pick=cur[p.id];
       if(!pick){ let plan=ORDER.filter(k=>budget[p.id][k]>0&&okK(k)).sort((a,b)=>iOf(a)-iOf(b)); pick=plan[0]; }
       if(!pick)pick=ORDER.filter(okK).sort((a,b)=>iOf(a)-iOf(b))[0];
-      if(!pick)pick=ORDER.filter(k=>eff(k)>0&&R(k)>1e-6&&room(k)).sort((a,b)=>iOf(a)-iOf(b))[0];
-      if(!pick){cur[p.id]=null;continue;} asg[p.id]=pick; cur[p.id]=pick; cap[pick]+=eff(pick); if(budget[p.id][pick]>0)budget[p.id][pick]--;
+      if(!pick)pick=ORDER.filter(k=>eff(k)>0&&R(k)>1e-6&&room(k)&&slot(k)).sort((a,b)=>iOf(a)-iOf(b))[0];
+      if(!pick){cur[p.id]=null;continue;} asg[p.id]=pick; cur[p.id]=pick; cap[pick]+=eff(pick); nAt[pick]=(nAt[pick]||0)+1; if(budget[p.id][pick]>0)budget[p.id][pick]--;
     }
     const advK={};
     ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); advK[k]=adv; if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
     mem.forEach(p=>{const k=asg[p.id];if(!k)return; const myr=rate0(p,k)*fatigueFactor(t); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
     t++;
   }
-  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});blocks[p.id]=g;});
+  const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});
+    // despeckle: mẩu ngắn (<8') kẹp giữa 2 đoạn CÙNG khâu -> gộp vào khâu bao quanh
+    let ch=true; while(ch){ch=false; for(let i=1;i<g.length-1;i++){ if(g[i].to-g[i].from<8 && g[i-1].k===g[i+1].k && g[i-1].k!==g[i].k){ g[i-1].to=g[i+1].to; g[i-1].ord=(g[i-1].ord||0)+(g[i].ord||0)+(g[i+1].ord||0); g.splice(i,2); ch=true; break; } } }
+    blocks[p.id]=g;});
   let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
   return {makespan:t,blocks,bnK,sStart,sEnd,doneOrders:Math.round(done[ORDER[ORDER.length-1]])};
 }
@@ -2070,17 +2107,21 @@ function waveGantt(mem,sim,ca,shiftMin){
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
   if(!people.length) return '';
-  // KHÂU NHÀ (làm CHÍNH) = khâu người đó đứng lâu nhất; các khâu khác = sang HỖ TRỢ
-  const homeOf=p=>{const b=sim.blocks[p.id]||[]; const dur={}; b.forEach(s=>{if(s.k!=='xacnhan')dur[s.k]=(dur[s.k]||0)+(s.to-s.from);}); let h=null,m=-1; for(const k in dur)if(dur[k]>m){m=dur[k];h=k;} return h;};
-  const home={}; people.forEach(p=>home[p.id]=homeOf(p));
-  const namesCol=`<div style="height:16px"></div>`+people.map(p=>{const h=home[p.id],hc=h?STAGE_COLOR[h]:null;const tag=hc?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:${hc[0]};color:#fff;font-weight:600">★${hc[1]}</span>`:'';return `<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)} — làm chính: ${h?stN(h):'-'}">${p.boss?'👑 ':''}${esc(p.name)}${tag}</div>`;}).join('');
+  // LÀM CHÍNH ở 1 khâu = người có SKILL MẠNH NHẤT trong số người làm khâu đó; còn lại = HỖ TRỢ
+  const works=(p,k)=>(sim.blocks[p.id]||[]).some(b=>b.k===k);
+  const stageMain={}; S.stages.forEach(s=>{ let bid=null,bsk=-1;
+    people.forEach(p=>{ if(!p.boss&&works(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} }); // ưu tiên người THƯỜNG mạnh nhất
+    if(!bid)people.forEach(p=>{ if(p.boss&&works(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} }); // không có người thường -> Bà Chúa Kho gọi bù làm chính
+    if(bid)stageMain[s.key]=bid; });
+  const mainStageOf=p=>{let best=null,bt=-1; S.stages.forEach(s=>{ if(stageMain[s.key]===p.id){const t=(sim.blocks[p.id]||[]).filter(b=>b.k===s.key).reduce((a,b)=>a+(b.to-b.from),0); if(t>bt){bt=t;best=s.key;}} }); return best;};
+  const namesCol=`<div style="height:16px"></div>`+people.map(p=>{const h=mainStageOf(p),hc=h?STAGE_COLOR[h]:null;const tag=hc?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:${hc[0]};color:#fff;font-weight:600">★${hc[1]}</span>`:` <span style="font-size:9px;color:#999">(phụ)</span>`;return `<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)} — làm chính: ${h?stN(h):'chỉ hỗ trợ'}">${p.boss?'👑 ':''}${esc(p.name)}${tag}</div>`;}).join('');
   // ĐỊNH VỊ THEO %: biểu đồ luôn lấp đầy chiều ngang khả dụng; ca dài thì min-width cho cuộn
   const minW=Math.round(span*3.2), apxW=Math.max(820,minW), pct=v=>v/span*100, hourPct=60/span*100, quarterPct=15/span*100;
   let axis=''; for(let m=0;m<=span;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
   const axisRow=`<div style="position:relative;height:16px">${axis}</div>`;
-  const trackRows=people.map(p=>{ const b=sim.blocks[p.id]; const hm=home[p.id];
+  const trackRows=people.map(p=>{ const b=sim.blocks[p.id];
     const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/span*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
-      const isMain=(s.k===hm); const mk2=isMain?'★ ':'↗ '; const hatch=isMain?'':'background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.32) 0 4px,transparent 4px 9px);';
+      const isMain=(stageMain[s.k]===p.id); const mk2=isMain?'★ ':'↗ '; const hatch=isMain?'':'background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.32) 0 4px,transparent 4px 9px);';
       let lab=''; if(Wpx>=50)lab=`<span style="font-weight:600;white-space:nowrap">${mk2}${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95;white-space:nowrap">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wpx>=20)lab=`<span style="font-weight:600;white-space:nowrap">${mk2}${cc[1]}</span>`;
       return `<div title="${isMain?'★ Làm chính':'↗ Hỗ trợ'}: ${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${Lp.toFixed(3)}%;width:${Wp.toFixed(3)}%;top:2px;height:28px;background-color:${cc[0]};${hatch}border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15;padding:0 2px;box-sizing:border-box">${lab}</div>`;}).join('');
     return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0,rgba(0,0,0,.10) 1px,transparent 1px,transparent ${hourPct.toFixed(3)}%),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0,rgba(0,0,0,.05) 1px,transparent 1px,transparent ${quarterPct.toFixed(3)}%)">${segs}</div>`;
@@ -2088,7 +2129,7 @@ function waveGantt(mem,sim,ca,shiftMin){
   const legend=S.stages.map(s=>{const cc=STAGE_COLOR[s.key]||['#888','']; return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 3px 0;font-size:10px;white-space:nowrap"><span style="width:11px;height:11px;background:${cc[0]};border-radius:2px;display:inline-block"></span>${stN(s.key)}</span>`;}).join('');
   return `<div style="margin:6px 0">`+
     `<div style="margin-bottom:3px;line-height:1.6">${legend}</div>`+
-    `<div style="font-size:10px;color:#777;margin-bottom:6px">★ (ô đặc) = <b>làm chính</b> khâu của mình · ↗ (ô kẻ sọc) = <b>sang hỗ trợ</b> rồi đi khâu khác. Cột tên có nhãn ★ = khâu chính của người đó.</div>`+
+    `<div style="font-size:10px;color:#777;margin-bottom:6px">★ (ô đặc) = <b>người làm chính</b> khâu đó (skill mạnh nhất trong nhóm) · ↗ (ô kẻ sọc) = <b>người hỗ trợ</b>. Cột tên: nhãn ★ = khâu người đó làm chính; (phụ) = chỉ đi hỗ trợ.</div>`+
     `<div style="display:flex;gap:6px;align-items:flex-start">`+
       `<div style="flex:0 0 100px">${namesCol}</div>`+
       `<div style="overflow-x:auto;flex:1 1 auto;-webkit-overflow-scrolling:touch"><div style="min-width:${minW}px">${axisRow}${trackRows}</div></div>`+
@@ -2115,9 +2156,13 @@ function wavePlaybook(cs,ca){
   const gantt=waveGantt(mem,sim,ca,shiftMin);
   // bản chữ (thu gọn) cho ai cần giờ chính xác — người giỏi lên trên
   const sumSk2=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
+  const works2=(p,k)=>(sim.blocks[p.id]||[]).some(x=>x.k===k);
+  const stMain={}; S.stages.forEach(s=>{ let bid=null,bsk=-1;
+    mem.forEach(p=>{ if(!p.boss&&works2(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} });
+    if(!bid)mem.forEach(p=>{ if(p.boss&&works2(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} });
+    if(bid)stMain[s.key]=bid; });
   const rowsTxt=mem.slice().sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk2(b)-sumSk2(a))).map(p=>{ const b=sim.blocks[p.id]||[]; if(!b.length)return '';
-    const dur={}; b.forEach(s=>{if(s.k!=='xacnhan')dur[s.k]=(dur[s.k]||0)+(s.to-s.from);}); let hm=null,mx=-1; for(const k in dur)if(dur[k]>mx){mx=dur[k];hm=k;}
-    const seq=b.map(s=>`${s.k===hm?'★':'↗'}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span><span style="color:#0f6e56;font-weight:600">${Math.round(s.ord||0)}đ</span>`).join(' → ');
+    const seq=b.map(s=>`${stMain[s.k]===p.id?'★':'↗'}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span><span style="color:#0f6e56;font-weight:600">${Math.round(s.ord||0)}đ</span>`).join(' → ');
     return `<div class="wstep" style="margin:2px 0">${p.boss?'👑 ':''}<b>${esc(p.name)}:</b> ${seq}</div>`;
   }).filter(Boolean).join('');
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
@@ -2136,6 +2181,22 @@ function wavePlaybook(cs,ca){
     `</div>`;
 }
 /* ---- chi tiết TUẦN ---- */
+let PLAN_SEL=null; // ô ngày đang chọn trong dải 7 ngày
+function isTodayD(d){const n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+function planTile(r,i){
+  const today=isTodayD(r.d); const dlbl=`${DOW[i]} ${r.d.getDate()}/${r.d.getMonth()+1}`;
+  if(r.type==='closed') return `<div class="ptile closed ${i===PLAN_SEL?'sel':''} ${today?'today':''}" onclick="selectPlanDay(${i})"><div class="pt-d">${dlbl}</div><div class="pt-status badge b-closed">Đóng cửa</div></div>`;
+  const hc=headcountText(r); const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);
+  const met=capM>=r.orders-caSlack(r.orders)-1e-6; const realSel=r.ord.selected.filter(p=>!p.boss).length; const bossIn=r.ord.selected.some(p=>p.boss);
+  return `<div class="ptile ${r.status} ${i===PLAN_SEL?'sel':''} ${today?'today':''}" onclick="selectPlanDay(${i})">
+    <div class="pt-d">${dlbl}${today?' <span style="color:var(--brand)">•</span>':''}</div>
+    <div class="pt-status badge ${hc.cls}">${hc.text}</div>
+    <div class="pt-row">📦 <b>${Math.round(r.orders)}</b> đơn</div>
+    <div class="pt-row">👥 ${realSel}${bossIn?'+👑':''} · NL <b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b></div>
+    ${!met?`<div class="pt-row" style="color:var(--bad);font-weight:700">⚠️ thiếu ${Math.round(r.orders-capM)}đ</div>`:(r.kind==='surplus'?`<div class="pt-row" style="color:var(--warn)">thừa người</div>`:`<div class="pt-row" style="color:var(--ok)">✓ đủ</div>`)}${r.summon?`<div class="pt-row" style="color:#b8860b">👑 gọi bù</div>`:''}
+  </div>`;
+}
+function selectPlanDay(i){ PLAN_SEL=i; document.querySelectorAll('.dayDetailWrap').forEach((el)=>{el.style.display=(+el.dataset.i===i?'block':'none');}); document.querySelectorAll('.ptile').forEach((el,j)=>el.classList.toggle('sel',j===i)); }
 function renderWeekView(){
   defaultPlanWeek();
   const {result,acc}=planWeek();
@@ -2152,7 +2213,9 @@ function renderWeekView(){
     <div class="box"><div class="l">Lệch kỹ năng</div><div class="n" style="color:var(--warn)">${cSkill}</div></div>`;
 
   const ws=document.getElementById('plan-week').value;
-  document.getElementById('planGrid').innerHTML=optBanner(ws)+result.map((r,i)=>{
+  if(PLAN_SEL==null||PLAN_SEL>=result.length){let ti=result.findIndex(rr=>isTodayD(rr.d)); if(ti<0)ti=result.findIndex(rr=>rr.type!=='closed'); PLAN_SEL=ti<0?0:ti;}
+  const stripHtml=`<div class="daystrip">`+result.map((r,i)=>planTile(r,i)).join('')+`</div>`;
+  const detailsHtml=result.map((r,i)=>{
     const tb={normal:['b-normal','Ngày thường'],mid:['b-mid','Ngày 15&25'],peak:['b-peak','Ngày trùng'],closed:['b-closed','Đóng cửa']}[r.type];
     const hc=headcountText(r);
     const sb=hc.cls, st=hc.text;
@@ -2251,18 +2314,19 @@ function renderWeekView(){
         </div>`;
       }).join('')}</div>` : '';
     const _nowT=new Date(); const isToday = r.d.getFullYear()===_nowT.getFullYear()&&r.d.getMonth()===_nowT.getMonth()&&r.d.getDate()===_nowT.getDate(); // so theo NGÀY ĐỊA PHƯƠNG (tránh lệch múi giờ của toISOString)
-    return `<div class="day ${r.status}${isToday?' today':''}">
+    return `<div class="dayDetailWrap" data-i="${i}" style="display:${i===PLAN_SEL?'block':'none'}"><div class="day daydet ${r.status}${isToday?' today':''}">
       <div class="dh"><b>${DOW[i]}</b>${isToday?'<span class="badge b-today">HÔM NAY</span>':''}<span class="badge ${tb[0]}">${tb[1]}</span></div>
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${realSel}</b> người${bossIn?' <span class="pill" style="color:#b8860b" title="Bà Chúa Kho được triệu hồi, ngoài người đăng ký">+👑</span>':''} · đăng ký <b>${totalReg}</b></div>
       ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">Xuất trận cân team — ${esc(r.summon)}</span></div>`:''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
-      ${caSection}
+      <div class="caRow">${caSection}</div>
       ${stagesHtml}
       ${crabWarn}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
-    </div>`;
+    </div></div>`;
   }).join('');
+  document.getElementById('planGrid').innerHTML=optBanner(ws)+stripHtml+detailsHtml;
 
   const act=S.staff.filter(s=>s.active);
   const max=Math.max(1,...act.map(s=>acc[s.id]||0));
@@ -2360,8 +2424,17 @@ function renderAll(){
   const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
   const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
   const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
-  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();
+  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();
   populateUserStaff();renderReg();updateNavBadge();
+}
+// ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY =====
+function updateDoPreview(){ const a=Math.max(0,+((document.getElementById('do-actual')||{}).value)||0); const u=Math.max(0,+((document.getElementById('do-uplift')||{}).value)||0); const p=document.getElementById('do-preview'); if(p)p.innerHTML=a>0?`→ ước <b style="color:#1d6fe0">${Math.round(a*(1+u/100))}</b> đơn cho cả ngày`:''; }
+function saveDayOrders(){ const ds=(document.getElementById('do-date')||{}).value; const a=Math.max(0,+((document.getElementById('do-actual')||{}).value)||0); const u=Math.max(0,+((document.getElementById('do-uplift')||{}).value)||0); if(!ds||a<=0){alert('Hãy chọn ngày và nhập số đơn thực tế (>0).');return;} S.dayOrders=S.dayOrders||{}; S.dayOrders[ds]={actual:a,uplift:u}; saveAll(); renderDayOrders(); renderAll(); }
+function clearDayOrders(ds){ if(S.dayOrders)delete S.dayOrders[ds]; saveAll(); renderDayOrders(); renderAll(); }
+function renderDayOrders(){ const dd=document.getElementById('do-date'); if(dd&&!dd.value)dd.value=fmt(new Date()); updateDoPreview();
+  const list=document.getElementById('do-list'); if(!list)return; const wd=['CN','T2','T3','T4','T5','T6','T7'];
+  const keys=Object.keys(S.dayOrders||{}).filter(k=>(+((S.dayOrders[k]||{}).actual))>0).sort();
+  list.innerHTML = keys.length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:3px">Ngày đã chốt số thực tế (ghi đè dự kiến):</div>`+keys.map(ds=>{const o=S.dayOrders[ds];const est=dayEstimate(ds);let lb=ds.slice(5);try{const dt=parse(ds);lb=wd[dt.getDay()]+' '+ds.slice(5);}catch(e){}return `<span style="display:inline-flex;align-items:center;gap:5px;margin:2px 4px 2px 0;padding:3px 8px;border-radius:7px;background:#e7f0ff;font-size:12px">${lb}: <b>${o.actual}đ</b> +${o.uplift||0}% → <b style="color:#1d6fe0">${est}</b> <span onclick="clearDayOrders('${ds}')" title="Xoá, quay lại số dự kiến" style="cursor:pointer;color:#c0392b;font-weight:700">✕</span></span>`;}).join('') : `<span class="hint">Chưa chốt ngày nào — đang dùng số dự kiến theo tháng.</span>`;
 }
 // nạp dữ liệu cloud (nếu có) rồi mở app
 (async function boot(){
