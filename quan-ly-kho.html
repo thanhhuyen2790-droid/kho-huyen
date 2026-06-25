@@ -49,6 +49,7 @@
   .b-closed{background:#eceef2;color:#9aa1b1}
   .daygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
   .day{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff}
+  body.viewonly #tab-config input,body.viewonly #tab-config select,body.viewonly #tab-config button,body.viewonly #tab-staff input,body.viewonly #tab-staff select,body.viewonly #tab-staff button,body.viewonly #tab-demand input,body.viewonly #tab-accounts input,body.viewonly #tab-accounts select,body.viewonly #tab-accounts button{pointer-events:none;opacity:.6}
   /* DASHBOARD: dải 7 ngày + bảng chi tiết */
   .daystrip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:14px}
   .ptile{border:1px solid var(--line);border-radius:10px;padding:7px 6px;cursor:pointer;background:#fff;transition:transform .1s,box-shadow .1s;overflow:hidden}
@@ -381,21 +382,17 @@
     </div>
     <div class="card">
       <h2>Phân bổ nhân sự &amp; cảnh báo</h2>
-      <p class="sub">Xanh = đủ người · Vàng = thừa · Đỏ = thiếu. Xem tổng quan theo tháng, bấm một tuần để xem chi tiết.</p>
-      <div class="toolbar">
-        <button class="modebtn on" id="modeMonth" onclick="setPlanMode('month')">📅 Tháng (4 tuần)</button>
-        <button class="modebtn" id="modeWeek" onclick="setPlanMode('week')">🗓️ Tuần</button>
-        <span id="weekControls" style="display:none;align-items:center;gap:8px">
-          <label class="fld" style="margin:0">Tuần:</label>
-          <input id="plan-week" type="date" style="max-width:160px" onchange="renderWeekView()">
-          <button class="btn ghost sm" onclick="pshiftWeek(-7)">◀ Trước</button>
-          <button class="btn ghost sm" onclick="pshiftWeek(7)">Sau ▶</button>
-        </span>
+      <p class="sub">Bấm một ô ngày để xem chi tiết. Viền xanh = đủ người · vàng = thừa · đỏ = thiếu. Dùng ◀ ▶ để xem tuần khác.</p>
+      <div class="toolbar" style="align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost sm" onclick="pshiftWeek(-7)">◀ Tuần trước</button>
+        <label class="fld" style="margin:0">Tuần:</label>
+        <input id="plan-week" type="date" style="max-width:160px" onchange="renderWeekView()">
+        <button class="btn ghost sm" onclick="pshiftWeek(7)">Tuần sau ▶</button>
       </div>
-      <div id="monthView"></div>
-      <div id="weekView" style="display:none">
+      <div id="monthView" style="display:none"></div>
+      <div id="weekView">
         <div class="kpi" id="planKpi"></div>
-        <div class="daygrid" id="planGrid"></div>
+        <div id="planGrid"></div>
         <h3 style="margin:20px 0 2px;font-size:15px">⚖️ Cân bằng ngày công (tuần đang xem)</h3>
         <p class="sub">Engine ưu tiên người ít ca trước để lương đồng đều.</p>
         <div id="fairness"></div>
@@ -410,6 +407,23 @@
       <h2>🧩 Độ phủ kỹ năng &amp; rủi ro đào tạo chéo</h2>
       <p class="sub">Khâu nào quá ít người giỏi là rủi ro — người đó nghỉ là tắc cả dây chuyền. Nên đào tạo thêm cho các khâu "mỏng".</p>
       <div id="skillRisk"></div>
+    </div>
+  </section>
+
+  <!-- TAB: TÀI KHOẢN -->
+  <section class="tab" id="tab-accounts">
+    <div class="card">
+      <h2>👤 Tài khoản nhân sự</h2>
+      <p class="sub">Tạo tài khoản riêng cho từng nhân sự: chọn người có sẵn hoặc tự nhập tên → phần mềm tự sinh <b>mật khẩu 6 số</b> + <b>link đăng nhập riêng</b> (đã sẵn tên) để bạn gửi. Tích chọn họ được xem gì. Mỗi mật khẩu chỉ đăng nhập 1 thiết bị. Xoá tài khoản khi nghỉ việc.</p>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div><label class="fld" style="margin:0 0 2px">Chọn nhân sự có sẵn</label><select id="ac-staff" onchange="onAcStaffPick()" style="max-width:210px"></select></div>
+        <div><label class="fld" style="margin:0 0 2px">Hoặc nhập tên ngoài</label><input id="ac-name" type="text" style="max-width:180px" placeholder="Tên nhân sự"></div>
+        <button class="btn" onclick="createAccount()">+ Tạo tài khoản</button>
+      </div>
+      <div style="margin-top:10px"><label class="fld" style="margin:0 0 3px">Cho phép xem các tính năng:</label><div id="ac-perms" style="display:flex;flex-wrap:wrap;gap:8px 14px"></div></div>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ac-edit"> Cho phép <b>sửa dữ liệu</b> (không tích = chỉ được xem, tránh tự chỉnh)</label>
+      <div id="ac-result"></div>
+      <div id="ac-list" style="margin-top:16px"></div>
     </div>
   </section>
 
@@ -555,7 +569,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-68 (giao diện Phân bổ: dải 7 ngày bấm chọn + bảng chi tiết ngày, ca Sáng/Chiều cạnh nhau)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-70 (bỏ chế độ Tháng; chỉ còn dải 7 ngày + Prev/Next; sửa lỗi planGrid bị bóp méo)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -604,6 +618,7 @@ function defaultState(){
     restDays:{}, // { 'YYYY-MM-DD': [staffId,...] } — đăng ký nhưng ĐƯỢC CHO NGHỈ (đã xác nhận, ghi vào chấm công)
     train:{}, // { 'YYYY-MM-DD': { staffId: stageKey } } — admin bổ sung người vào khâu nút thắt (đào tạo + trợ lực)
     dayOrders:{}, // { 'YYYY-MM-DD': { actual:số đơn đầu ngày, uplift:% tăng dự kiến } } — ghi đè đơn dự kiến bằng số THỰC TẾ
+    accounts:{}, // { accId: { name, staffId, pass(6 số), perms:[tabKey...], canEdit, device, lastLogin } } — tài khoản riêng từng nhân sự
     _skillUnit:'donh'
   };
 }
@@ -815,8 +830,8 @@ function setupAutoSaveGuards(){
 }
 
 /* ---------- AUTH ---------- */
-const PW={admin:'204290',user:'123456'};
-let role=null, loginRole='admin';
+const PW={admin:'140816',user:'123456'};
+let role=null, loginRole='admin', LOGIN_ACC=null;
 function pickRole(r){
   loginRole=r;
   document.getElementById('role-admin').classList.toggle('on',r==='admin');
@@ -825,9 +840,18 @@ function pickRole(r){
   document.getElementById('pw').focus();
 }
 function doLogin(){
-  const pw=document.getElementById('pw').value;
-  if(pw===PW[loginRole]){role=loginRole;try{sessionStorage.setItem('khoRole',role)}catch(e){}startApp();}
-  else document.getElementById('loginErr').textContent='Sai mật khẩu, thử lại.';
+  const pw=document.getElementById('pw').value; const err=document.getElementById('loginErr');
+  if(LOGIN_ACC){ const a=S.accounts&&S.accounts[LOGIN_ACC];
+    if(!a){err.textContent='Tài khoản không tồn tại / đã bị xoá.';return;}
+    if(pw!==a.pass){err.textContent='Sai mật khẩu, thử lại.';return;}
+    const dev=deviceId();
+    if(a.device&&a.device!==dev){err.textContent='Mật khẩu này đã đăng nhập trên thiết bị khác. Liên hệ quản lý để reset thiết bị.';return;}
+    a.device=a.device||dev; a.lastLogin=Date.now(); CURACC=LOGIN_ACC; role='user';
+    try{sessionStorage.setItem('khoRole','user');sessionStorage.setItem('khoAcc',LOGIN_ACC);}catch(e){}
+    saveAll(); startApp(); return;
+  }
+  if(pw===PW[loginRole]){role=loginRole;CURACC=null;try{sessionStorage.setItem('khoRole',role);sessionStorage.removeItem('khoAcc')}catch(e){}startApp();}
+  else err.textContent='Sai mật khẩu, thử lại.';
 }
 function logout(){
   role=null;try{sessionStorage.removeItem('khoRole')}catch(e){}
@@ -839,17 +863,53 @@ function logout(){
 function startApp(){
   document.getElementById('overlay').style.display='none';
   document.getElementById('hdrRight').style.display='flex';
-  document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)';
+  if(CURACC&&S.accounts&&S.accounts[CURACC]){ const a=S.accounts[CURACC]; document.getElementById('roleChip').textContent='🙋 '+a.name; document.body.classList.toggle('viewonly',!a.canEdit); }
+  else { document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)'; document.body.classList.remove('viewonly'); }
   {const bt=document.getElementById('buildTag'); if(bt)bt.textContent=BUILD;}
   setConnBadge();
   setSaveStatus(cloudMode?'saved':'local');
   setupAutoSaveGuards();
   buildNav();renderAll();
-  const first=role==='admin'?'plan':'reg';
-  const btn=document.querySelector('#nav button[data-t="'+first+'"]');
+  const vts=visibleTabs(); const first=CURACC?(vts[0]&&vts[0][0]):(role==='admin'?'plan':'reg');
+  const btn=first?document.querySelector('#nav button[data-t="'+first+'"]'):null;
   if(btn)go(first,btn);
 }
 
+/* ---------- TÀI KHOẢN NHÂN SỰ ---------- */
+let CURACC=null; // id tài khoản nhân sự đang đăng nhập (null = admin/user chung)
+function deviceId(){ let d=null; try{d=localStorage.getItem('khoDevice')}catch(e){} if(!d){d='d'+Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36); try{localStorage.setItem('khoDevice',d)}catch(e){}} return d; }
+function genPass(){ let s=''; for(let i=0;i<6;i++)s+=Math.floor(Math.random()*10); return s; }
+function accLoginLink(id){ return location.origin+location.pathname+'?u='+id; }
+function copyText(t,btn){ const done=()=>{ if(btn){const o=btn.textContent;btn.textContent='✓ Đã copy';setTimeout(()=>{btn.textContent=o;},1200);} };
+  try{ navigator.clipboard.writeText(t).then(done,()=>{}); }catch(e){ const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(_){}ta.remove();done(); } }
+function onAcStaffPick(){ const sel=document.getElementById('ac-staff'); const nm=document.getElementById('ac-name'); if(sel&&sel.value&&nm)nm.value=sel.options[sel.selectedIndex].text; }
+function createAccount(){
+  const nmEl=document.getElementById('ac-name'); const nm=(nmEl?nmEl.value:'').trim();
+  if(!nm){ alert('Chọn nhân sự có sẵn hoặc nhập tên.'); return; }
+  const sel=document.getElementById('ac-staff'); const staffId=(sel&&sel.value)?sel.value:null;
+  const perms=Array.from(document.querySelectorAll('.ac-perm:checked')).map(c=>c.value);
+  const canEdit=!!(document.getElementById('ac-edit')||{}).checked;
+  const id='u'+Date.now().toString(36)+Math.floor(Math.random()*1000); const pass=genPass();
+  S.accounts=S.accounts||{}; S.accounts[id]={name:nm,staffId,pass,perms,canEdit,device:null,lastLogin:null};
+  saveAll();
+  const link=accLoginLink(id);
+  const res=document.getElementById('ac-result');
+  if(res)res.innerHTML=`<div style="margin-top:12px;padding:12px;border:1.5px solid #bfe6cf;background:#f0fbf5;border-radius:10px">
+    <b style="color:#0f6e56">✓ Đã tạo tài khoản cho ${esc(nm)}</b>
+    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>Link:</b> <code style="font-size:12px;word-break:break-all;background:#fff;padding:2px 5px;border-radius:5px">${link}</code><button class="btn ghost sm" onclick="copyText('${link}',this)">📋 Copy link</button></div>
+    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>Mật khẩu:</b> <code style="font-size:18px;letter-spacing:2px;color:#1d6fe0;background:#fff;padding:2px 8px;border-radius:5px">${pass}</code><button class="btn ghost sm" onclick="copyText('${pass}',this)">📋 Copy MK</button><button class="btn sm" onclick="copyText('${link}\\nMật khẩu: ${pass}',this)">📋 Copy cả link + MK</button></div>
+    <div class="hint" style="margin-top:6px">Gửi cho ${esc(nm)}. Mở link sẽ sẵn tên, chỉ cần nhập mật khẩu. Mật khẩu chỉ dùng được trên <b>1 thiết bị</b> đầu tiên đăng nhập.</div></div>`;
+  if(nmEl)nmEl.value=''; if(sel)sel.value='';
+  renderAccounts();
+}
+function delAccount(id){ if(!confirm('Xoá tài khoản này? Nhân sự sẽ không đăng nhập được nữa.'))return; if(S.accounts)delete S.accounts[id]; saveAll(); renderAccounts(); }
+function resetDevice(id){ if(S.accounts&&S.accounts[id]){ S.accounts[id].device=null; saveAll(); renderAccounts(); } }
+function renderAccounts(){
+  const sel=document.getElementById('ac-staff'); if(sel)sel.innerHTML='<option value="">— chọn người có sẵn —</option>'+S.staff.filter(s=>s.active).map((s,i)=>`<option value="${s.id||('s'+i)}">${esc(s.name)}</option>`).join('');
+  const pc=document.getElementById('ac-perms'); if(pc&&pc.dataset.init!=='1'){ pc.innerHTML=PERM_TABS.map(t=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer"><input type="checkbox" class="ac-perm" value="${t[0]}" ${(t[0]==='plan'||t[0]==='reg')?'checked':''}>${t[1]}</label>`).join(''); pc.dataset.init='1'; }
+  const list=document.getElementById('ac-list'); if(!list)return; const ids=Object.keys(S.accounts||{});
+  list.innerHTML = ids.length ? `<table class="catbl" style="table-layout:auto"><thead><tr><th>Nhân sự</th><th>Mật khẩu</th><th>Quyền xem</th><th>Thiết bị</th><th>Đăng nhập gần nhất</th><th></th></tr></thead><tbody>`+ids.map(id=>{const a=S.accounts[id];const link=accLoginLink(id);const permTxt=(a.perms||[]).map(k=>{const t=PERM_TABS.find(x=>x[0]===k);return t?t[1]:k;}).join(', ')||'—';return `<tr><td><b>${esc(a.name)}</b></td><td><code style="font-size:14px;letter-spacing:1px">${a.pass}</code></td><td style="font-size:11px">${permTxt}${a.canEdit?' <span class="pill" style="color:#0f6e56">được sửa</span>':''}</td><td>${a.device?'<span style="color:#0f6e56">đã gắn</span>':'<span class="hint">chưa</span>'}</td><td style="font-size:11px">${a.lastLogin?new Date(a.lastLogin).toLocaleString('vi-VN'):'—'}</td><td style="white-space:nowrap"><button class="btn ghost sm" onclick="copyText('${link}\\nMật khẩu: ${a.pass}',this)">📋 Copy</button> ${a.device?`<button class="btn ghost sm" onclick="resetDevice('${id}')">Reset máy</button>`:''} <button class="btn danger sm" onclick="delAccount('${id}')">Xoá</button></td></tr>`;}).join('')+`</tbody></table>` : `<span class="hint">Chưa có tài khoản nào. Tạo ở trên rồi gửi link + mật khẩu cho nhân sự.</span>`;
+}
 /* ---------- NAV ---------- */
 const ALL_TABS=[
   ['plan','⚙️ Phân bổ Nhân sự','admin'],
@@ -857,9 +917,12 @@ const ALL_TABS=[
   ['staff','👥 Nhân sự','admin'],
   ['reg','🗓️ Đăng ký lịch','both'],
   ['approve','✅ Phê duyệt','admin'],
+  ['accounts','👤 Tài khoản','admin'],
   ['config','🛠️ Cài đặt','admin'],
 ];
-function visibleTabs(){return ALL_TABS.filter(t=>t[2]==='both'||t[2]===role)}
+// các tính năng (tab) có thể cấp quyền xem cho tài khoản nhân sự
+const PERM_TABS=[['plan','Phân bổ & lịch chạy ca'],['reg','Đăng ký lịch (của mình)'],['demand','Chỉ tiêu đơn'],['staff','Bảng nhân sự & kỹ năng'],['approve','Phê duyệt lịch'],['config','Cài đặt hệ thống']];
+function visibleTabs(){ if(CURACC&&S.accounts&&S.accounts[CURACC]){const pr=S.accounts[CURACC].perms||[]; return ALL_TABS.filter(t=>pr.includes(t[0]));} return ALL_TABS.filter(t=>t[2]==='both'||t[2]===role); }
 function buildNav(){
   const n=document.getElementById('nav');
   n.innerHTML=visibleTabs().map((t,i)=>{
@@ -917,7 +980,7 @@ function renderSkillMatrix(){
   const order=S.staff.map((p,i)=>i).sort((a,b)=>{const A=S.staff[a],B=S.staff[b];return ((B.active?1:0)-(A.active?1:0)) || (staffScore(B)-staffScore(A));});
   const head=`<thead><tr><th style="text-align:left;position:sticky;left:0;background:#fff">Nhân sự</th><th>Loại</th><th style="background:#eef4ff" title="Tốc độ khi 1 người làm TRỌN cả 7 khâu cho mỗi đơn — TB 20 đơn/h. ĐÂY là số CHÍNH để tính cần bao nhiêu người.">⭐ Trọn gói<br><span class="pill" style="background:#1d6fe0;color:#fff">đơn/h</span></th>${S.stages.map(s=>`<th title="Tốc độ riêng khâu này (để tối ưu vị trí) — chuẩn ${s.rate} đơn/h">${esc(s.name)}<br><span class="pill">${s.rate}</span></th>`).join('')}<th>Làm</th><th></th></tr></thead>`;
   const body=order.map(i=>{const p=S.staff[i];return `<tr ${p.active?'':'style="opacity:.5"'}>
-    <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:96px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
+    <td style="text-align:left;font-weight:600;position:sticky;left:0;background:#fff;white-space:nowrap"><input value="${esc(p.name)}" style="width:172px;border:1px solid var(--line);font-weight:600" onchange="S.staff[${i}].name=this.value;saveAll();renderRegTable();renderSkillMatrix()"></td>
     <td style="text-align:center"><select onchange="S.staff[${i}].type=this.value;saveAll()"><option ${p.type==='FT'?'selected':''} value="FT">FT</option><option ${p.type==='PT'?'selected':''} value="PT">PT</option></select></td>
     <td style="text-align:center;padding:3px;background:#eef4ff"><input type="number" min="0" value="${p.prod!=null?p.prod:20}" title="Tốc độ trọn gói (làm đủ 7 khâu) — yếu tố CHÍNH phân bổ. TB 20." style="width:64px;text-align:center;font-weight:700;border:1px solid #9bbcf0;background:#fff" onchange="setProd(${i},this.value)"></td>
     ${S.stages.map(s=>{const v=p.skills[s.key]??0;const st=(p.starSkill&&p.starSkill[s.key]);return `<td style="text-align:center;padding:3px"><div style="display:flex;flex-direction:column;align-items:center;gap:1px"><input type="number" min="0" value="${v}" title="đơn/h khâu này (chuẩn ${s.rate})" style="width:66px;text-align:center;border:1px solid var(--line);background:${skillCellBg(v,s.rate)}" onchange="setSkill(${i},'${s.key}',this.value)"><span onclick="toggleSkillStar(${i},'${s.key}')" title="Đánh dấu skill NỔI BẬT — engine ưu tiên xếp người này vào khâu" style="cursor:pointer;font-size:13px;line-height:1;color:${st?'#f5a623':'#cfd6e0'}">★</span></div></td>`;}).join('')}
@@ -2382,21 +2445,15 @@ function optBanner(ws){
 }
 
 /* ---- điều phối view ---- */
-let planMode='month';
 function defaultPlanWeek(){ const e=document.getElementById('plan-week'); if(e&&!e.value)e.value=fmt(mondayOf(new Date())); }
-function setPlanMode(m){ planMode=m; renderPlan(); }
-function openWeek(ws){ document.getElementById('plan-week').value=ws; planMode='week'; renderPlan(); }
-function pshiftWeek(n){ const c=document.getElementById('plan-week'); const d=parse(c.value); d.setDate(d.getDate()+n); c.value=fmt(d); renderWeekView(); }
+function setPlanMode(){ renderPlan(); } // giữ tương thích (đã bỏ chế độ tháng)
+function openWeek(ws){ PLAN_SEL=null; document.getElementById('plan-week').value=ws; renderPlan(); }
+function pshiftWeek(n){ const c=document.getElementById('plan-week'); const d=parse(c.value); d.setDate(d.getDate()+n); c.value=fmt(d); PLAN_SEL=null; renderWeekView(); }
 function renderPlan(){
   defaultPlanWeek();
   renderPerf();
   renderSkillRisk();
-  document.getElementById('monthView').style.display=planMode==='month'?'':'none';
-  document.getElementById('weekView').style.display=planMode==='week'?'':'none';
-  document.getElementById('weekControls').style.display=planMode==='week'?'inline-flex':'none';
-  document.getElementById('modeMonth').classList.toggle('on',planMode==='month');
-  document.getElementById('modeWeek').classList.toggle('on',planMode==='week');
-  if(planMode==='month')renderMonthView(); else renderWeekView();
+  renderWeekView();
 }
 
 /* ---------- IMPORT/EXPORT ---------- */
@@ -2424,7 +2481,7 @@ function renderAll(){
   const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
   const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
   const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
-  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();
+  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();renderAccounts();
   populateUserStaff();renderReg();updateNavBadge();
 }
 // ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY =====
@@ -2439,8 +2496,18 @@ function renderDayOrders(){ const dd=document.getElementById('do-date'); if(dd&&
 // nạp dữ liệu cloud (nếu có) rồi mở app
 (async function boot(){
   await initCloud();
-  let saved=null;try{saved=sessionStorage.getItem('khoRole')}catch(e){}
-  if(saved&&PW[saved]){role=saved;startApp();}
+  const u=new URLSearchParams(location.search).get('u');
+  if(u){ LOGIN_ACC=u; const a=S.accounts&&S.accounts[u];
+    const rs=document.querySelector('.login .roles'); if(rs)rs.style.display='none';
+    const h2=document.querySelector('.login h2'); if(h2)h2.textContent= a?('🔐 '+a.name):'🔐 Đăng nhập';
+    const lp=document.querySelector('.login p'); if(lp)lp.textContent= a?('Nhập mật khẩu 6 số để vào.'):'Link không hợp lệ hoặc tài khoản đã bị xoá. Liên hệ quản lý.';
+    let sAcc=null,sRole=null;try{sAcc=sessionStorage.getItem('khoAcc');sRole=sessionStorage.getItem('khoRole')}catch(e){}
+    if(sRole==='user'&&sAcc===u&&a&&a.device===deviceId()){ CURACC=u; role='user'; startApp(); return; }
+    document.getElementById('overlay').style.display='flex'; document.getElementById('pw').focus(); return;
+  }
+  let saved=null,sAcc=null;try{saved=sessionStorage.getItem('khoRole');sAcc=sessionStorage.getItem('khoAcc')}catch(e){}
+  if(saved&&saved!=='user'&&PW[saved]){role=saved;CURACC=null;startApp();}
+  else if(saved==='user'&&!sAcc&&PW.user){role='user';CURACC=null;startApp();}
   else{document.getElementById('overlay').style.display='flex';document.getElementById('pw').focus();}
 })();
 </script>
