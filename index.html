@@ -529,7 +529,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-63 (bảng nhân sự: nút ★ đánh dấu skill nổi bật → engine ưu tiên xếp người đó vào khâu)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-65 (làm chính = người THƯỜNG mạnh nhất khâu; Bà Chúa Kho chỉ làm chính khâu thiếu người; mỗi khâu 1 người chính)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2072,17 +2072,21 @@ function waveGantt(mem,sim,ca,shiftMin){
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
   if(!people.length) return '';
-  // KHÂU NHÀ (làm CHÍNH) = khâu người đó đứng lâu nhất; các khâu khác = sang HỖ TRỢ
-  const homeOf=p=>{const b=sim.blocks[p.id]||[]; const dur={}; b.forEach(s=>{if(s.k!=='xacnhan')dur[s.k]=(dur[s.k]||0)+(s.to-s.from);}); let h=null,m=-1; for(const k in dur)if(dur[k]>m){m=dur[k];h=k;} return h;};
-  const home={}; people.forEach(p=>home[p.id]=homeOf(p));
-  const namesCol=`<div style="height:16px"></div>`+people.map(p=>{const h=home[p.id],hc=h?STAGE_COLOR[h]:null;const tag=hc?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:${hc[0]};color:#fff;font-weight:600">★${hc[1]}</span>`:'';return `<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)} — làm chính: ${h?stN(h):'-'}">${p.boss?'👑 ':''}${esc(p.name)}${tag}</div>`;}).join('');
+  // LÀM CHÍNH ở 1 khâu = người có SKILL MẠNH NHẤT trong số người làm khâu đó; còn lại = HỖ TRỢ
+  const works=(p,k)=>(sim.blocks[p.id]||[]).some(b=>b.k===k);
+  const stageMain={}; S.stages.forEach(s=>{ let bid=null,bsk=-1;
+    people.forEach(p=>{ if(!p.boss&&works(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} }); // ưu tiên người THƯỜNG mạnh nhất
+    if(!bid)people.forEach(p=>{ if(p.boss&&works(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} }); // không có người thường -> Bà Chúa Kho gọi bù làm chính
+    if(bid)stageMain[s.key]=bid; });
+  const mainStageOf=p=>{let best=null,bt=-1; S.stages.forEach(s=>{ if(stageMain[s.key]===p.id){const t=(sim.blocks[p.id]||[]).filter(b=>b.k===s.key).reduce((a,b)=>a+(b.to-b.from),0); if(t>bt){bt=t;best=s.key;}} }); return best;};
+  const namesCol=`<div style="height:16px"></div>`+people.map(p=>{const h=mainStageOf(p),hc=h?STAGE_COLOR[h]:null;const tag=hc?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:${hc[0]};color:#fff;font-weight:600">★${hc[1]}</span>`:` <span style="font-size:9px;color:#999">(phụ)</span>`;return `<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)} — làm chính: ${h?stN(h):'chỉ hỗ trợ'}">${p.boss?'👑 ':''}${esc(p.name)}${tag}</div>`;}).join('');
   // ĐỊNH VỊ THEO %: biểu đồ luôn lấp đầy chiều ngang khả dụng; ca dài thì min-width cho cuộn
   const minW=Math.round(span*3.2), apxW=Math.max(820,minW), pct=v=>v/span*100, hourPct=60/span*100, quarterPct=15/span*100;
   let axis=''; for(let m=0;m<=span;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
   const axisRow=`<div style="position:relative;height:16px">${axis}</div>`;
-  const trackRows=people.map(p=>{ const b=sim.blocks[p.id]; const hm=home[p.id];
+  const trackRows=people.map(p=>{ const b=sim.blocks[p.id];
     const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/span*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
-      const isMain=(s.k===hm); const mk2=isMain?'★ ':'↗ '; const hatch=isMain?'':'background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.32) 0 4px,transparent 4px 9px);';
+      const isMain=(stageMain[s.k]===p.id); const mk2=isMain?'★ ':'↗ '; const hatch=isMain?'':'background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.32) 0 4px,transparent 4px 9px);';
       let lab=''; if(Wpx>=50)lab=`<span style="font-weight:600;white-space:nowrap">${mk2}${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95;white-space:nowrap">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wpx>=20)lab=`<span style="font-weight:600;white-space:nowrap">${mk2}${cc[1]}</span>`;
       return `<div title="${isMain?'★ Làm chính':'↗ Hỗ trợ'}: ${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${Lp.toFixed(3)}%;width:${Wp.toFixed(3)}%;top:2px;height:28px;background-color:${cc[0]};${hatch}border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15;padding:0 2px;box-sizing:border-box">${lab}</div>`;}).join('');
     return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0,rgba(0,0,0,.10) 1px,transparent 1px,transparent ${hourPct.toFixed(3)}%),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0,rgba(0,0,0,.05) 1px,transparent 1px,transparent ${quarterPct.toFixed(3)}%)">${segs}</div>`;
@@ -2090,7 +2094,7 @@ function waveGantt(mem,sim,ca,shiftMin){
   const legend=S.stages.map(s=>{const cc=STAGE_COLOR[s.key]||['#888','']; return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 3px 0;font-size:10px;white-space:nowrap"><span style="width:11px;height:11px;background:${cc[0]};border-radius:2px;display:inline-block"></span>${stN(s.key)}</span>`;}).join('');
   return `<div style="margin:6px 0">`+
     `<div style="margin-bottom:3px;line-height:1.6">${legend}</div>`+
-    `<div style="font-size:10px;color:#777;margin-bottom:6px">★ (ô đặc) = <b>làm chính</b> khâu của mình · ↗ (ô kẻ sọc) = <b>sang hỗ trợ</b> rồi đi khâu khác. Cột tên có nhãn ★ = khâu chính của người đó.</div>`+
+    `<div style="font-size:10px;color:#777;margin-bottom:6px">★ (ô đặc) = <b>người làm chính</b> khâu đó (skill mạnh nhất trong nhóm) · ↗ (ô kẻ sọc) = <b>người hỗ trợ</b>. Cột tên: nhãn ★ = khâu người đó làm chính; (phụ) = chỉ đi hỗ trợ.</div>`+
     `<div style="display:flex;gap:6px;align-items:flex-start">`+
       `<div style="flex:0 0 100px">${namesCol}</div>`+
       `<div style="overflow-x:auto;flex:1 1 auto;-webkit-overflow-scrolling:touch"><div style="min-width:${minW}px">${axisRow}${trackRows}</div></div>`+
@@ -2117,9 +2121,13 @@ function wavePlaybook(cs,ca){
   const gantt=waveGantt(mem,sim,ca,shiftMin);
   // bản chữ (thu gọn) cho ai cần giờ chính xác — người giỏi lên trên
   const sumSk2=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
+  const works2=(p,k)=>(sim.blocks[p.id]||[]).some(x=>x.k===k);
+  const stMain={}; S.stages.forEach(s=>{ let bid=null,bsk=-1;
+    mem.forEach(p=>{ if(!p.boss&&works2(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} });
+    if(!bid)mem.forEach(p=>{ if(p.boss&&works2(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} });
+    if(bid)stMain[s.key]=bid; });
   const rowsTxt=mem.slice().sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk2(b)-sumSk2(a))).map(p=>{ const b=sim.blocks[p.id]||[]; if(!b.length)return '';
-    const dur={}; b.forEach(s=>{if(s.k!=='xacnhan')dur[s.k]=(dur[s.k]||0)+(s.to-s.from);}); let hm=null,mx=-1; for(const k in dur)if(dur[k]>mx){mx=dur[k];hm=k;}
-    const seq=b.map(s=>`${s.k===hm?'★':'↗'}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span><span style="color:#0f6e56;font-weight:600">${Math.round(s.ord||0)}đ</span>`).join(' → ');
+    const seq=b.map(s=>`${stMain[s.k]===p.id?'★':'↗'}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span><span style="color:#0f6e56;font-weight:600">${Math.round(s.ord||0)}đ</span>`).join(' → ');
     return `<div class="wstep" style="margin:2px 0">${p.boss?'👑 ':''}<b>${esc(p.name)}:</b> ${seq}</div>`;
   }).filter(Boolean).join('');
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
