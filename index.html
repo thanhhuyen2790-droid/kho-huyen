@@ -569,7 +569,7 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-70 (bỏ chế độ Tháng; chỉ còn dải 7 ngày + Prev/Next; sửa lỗi planGrid bị bóp méo)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-71 (sửa quyền tài khoản qua modal; thanh tiêu đề chỉ hiện số version)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -865,7 +865,7 @@ function startApp(){
   document.getElementById('hdrRight').style.display='flex';
   if(CURACC&&S.accounts&&S.accounts[CURACC]){ const a=S.accounts[CURACC]; document.getElementById('roleChip').textContent='🙋 '+a.name; document.body.classList.toggle('viewonly',!a.canEdit); }
   else { document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)'; document.body.classList.remove('viewonly'); }
-  {const bt=document.getElementById('buildTag'); if(bt)bt.textContent=BUILD;}
+  {const bt=document.getElementById('buildTag'); if(bt)bt.textContent=BUILD.split(' ')[0];}
   setConnBadge();
   setSaveStatus(cloudMode?'saved':'local');
   setupAutoSaveGuards();
@@ -908,7 +908,26 @@ function renderAccounts(){
   const sel=document.getElementById('ac-staff'); if(sel)sel.innerHTML='<option value="">— chọn người có sẵn —</option>'+S.staff.filter(s=>s.active).map((s,i)=>`<option value="${s.id||('s'+i)}">${esc(s.name)}</option>`).join('');
   const pc=document.getElementById('ac-perms'); if(pc&&pc.dataset.init!=='1'){ pc.innerHTML=PERM_TABS.map(t=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer"><input type="checkbox" class="ac-perm" value="${t[0]}" ${(t[0]==='plan'||t[0]==='reg')?'checked':''}>${t[1]}</label>`).join(''); pc.dataset.init='1'; }
   const list=document.getElementById('ac-list'); if(!list)return; const ids=Object.keys(S.accounts||{});
-  list.innerHTML = ids.length ? `<table class="catbl" style="table-layout:auto"><thead><tr><th>Nhân sự</th><th>Mật khẩu</th><th>Quyền xem</th><th>Thiết bị</th><th>Đăng nhập gần nhất</th><th></th></tr></thead><tbody>`+ids.map(id=>{const a=S.accounts[id];const link=accLoginLink(id);const permTxt=(a.perms||[]).map(k=>{const t=PERM_TABS.find(x=>x[0]===k);return t?t[1]:k;}).join(', ')||'—';return `<tr><td><b>${esc(a.name)}</b></td><td><code style="font-size:14px;letter-spacing:1px">${a.pass}</code></td><td style="font-size:11px">${permTxt}${a.canEdit?' <span class="pill" style="color:#0f6e56">được sửa</span>':''}</td><td>${a.device?'<span style="color:#0f6e56">đã gắn</span>':'<span class="hint">chưa</span>'}</td><td style="font-size:11px">${a.lastLogin?new Date(a.lastLogin).toLocaleString('vi-VN'):'—'}</td><td style="white-space:nowrap"><button class="btn ghost sm" onclick="copyText('${link}\\nMật khẩu: ${a.pass}',this)">📋 Copy</button> ${a.device?`<button class="btn ghost sm" onclick="resetDevice('${id}')">Reset máy</button>`:''} <button class="btn danger sm" onclick="delAccount('${id}')">Xoá</button></td></tr>`;}).join('')+`</tbody></table>` : `<span class="hint">Chưa có tài khoản nào. Tạo ở trên rồi gửi link + mật khẩu cho nhân sự.</span>`;
+  list.innerHTML = ids.length ? `<table class="catbl" style="table-layout:auto"><thead><tr><th>Nhân sự</th><th>Mật khẩu</th><th>Quyền xem</th><th>Thiết bị</th><th>Đăng nhập gần nhất</th><th></th></tr></thead><tbody>`+ids.map(id=>{const a=S.accounts[id];const link=accLoginLink(id);const permTxt=(a.perms||[]).map(k=>{const t=PERM_TABS.find(x=>x[0]===k);return t?t[1]:k;}).join(', ')||'—';return `<tr><td><b>${esc(a.name)}</b></td><td><code style="font-size:14px;letter-spacing:1px">${a.pass}</code></td><td style="font-size:11px">${permTxt}${a.canEdit?' <span class="pill" style="color:#0f6e56">được sửa</span>':''}</td><td>${a.device?'<span style="color:#0f6e56">đã gắn</span>':'<span class="hint">chưa</span>'}</td><td style="font-size:11px">${a.lastLogin?new Date(a.lastLogin).toLocaleString('vi-VN'):'—'}</td><td style="white-space:nowrap"><button class="btn ghost sm" onclick="editAccountPerms('${id}')">✏️ Quyền</button> <button class="btn ghost sm" onclick="copyText('${link}\\nMật khẩu: ${a.pass}',this)">📋 Copy</button> ${a.device?`<button class="btn ghost sm" onclick="resetDevice('${id}')">Reset máy</button>`:''} <button class="btn danger sm" onclick="delAccount('${id}')">Xoá</button></td></tr>`;}).join('')+`</tbody></table>` : `<span class="hint">Chưa có tài khoản nào. Tạo ở trên rồi gửi link + mật khẩu cho nhân sự.</span>`;
+}
+function editAccountPerms(id){
+  const a=S.accounts&&S.accounts[id]; if(!a)return;
+  const perms=PERM_TABS.map(t=>`<label style="display:flex;align-items:center;gap:7px;padding:5px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="ep-perm" value="${t[0]}" ${(a.perms||[]).includes(t[0])?'checked':''}> ${t[1]}</label>`).join('');
+  let ov=document.getElementById('permModal'); if(!ov){ov=document.createElement('div');ov.id='permModal';document.body.appendChild(ov);}
+  ov.className='pvmodal';
+  ov.innerHTML=`<div class="pvbox" style="max-width:460px"><div class="pvhead"><b>✏️ Sửa quyền — ${esc(a.name)}</b><button class="btn" onclick="closePermModal()">✕</button></div><div style="padding:16px;overflow:auto">
+    <div><label class="fld" style="margin:0 0 3px">Tên hiển thị</label><input id="ep-name" value="${esc(a.name)}" style="width:100%"></div>
+    <div style="font-weight:600;margin:12px 0 4px">Cho phép xem các tính năng:</div>${perms}
+    <label style="display:flex;align-items:center;gap:7px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px;cursor:pointer"><input type="checkbox" id="ep-edit" ${a.canEdit?'checked':''}> Cho phép <b>sửa dữ liệu</b> (không tích = chỉ xem)</label>
+  </div><div class="pvfoot"><button class="btn ghost" onclick="closePermModal()">Huỷ</button><button class="btn" onclick="saveAccountPerms('${id}')">Lưu thay đổi</button></div></div>`;
+  ov.style.display='flex'; ov.onclick=e=>{if(e.target===ov)closePermModal();};
+}
+function closePermModal(){const ov=document.getElementById('permModal');if(ov)ov.remove();}
+function saveAccountPerms(id){ const a=S.accounts&&S.accounts[id]; if(!a)return;
+  a.perms=Array.from(document.querySelectorAll('.ep-perm:checked')).map(c=>c.value);
+  a.canEdit=!!(document.getElementById('ep-edit')||{}).checked;
+  const nm=((document.getElementById('ep-name')||{}).value||'').trim(); if(nm)a.name=nm;
+  saveAll(); closePermModal(); renderAccounts();
 }
 /* ---------- NAV ---------- */
 const ALL_TABS=[
