@@ -561,8 +561,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "1.1"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-73 (Crabthing linh hoạt: người chạy đơn xong sớm phụ crab; crab giúp nhặt 30' đầu ca)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "1.2"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-74 (mô tả điều phối khớp biểu đồ từng thời điểm: ai mở khâu, khi nào người chính vào, ai phụ)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2260,21 +2260,33 @@ function wavePlaybook(cs,ca){
   // ===== Mô tả theo CÁCH ĐIỀU PHỐI (đọc là hiểu quy trình) =====
   const nm=id=>{const p=mem.find(x=>x.id===id);return p?((p.boss?'👑 ':'')+esc(p.name)):'';};
   const skOf=(id,k)=>{const p=mem.find(x=>x.id===id);return p?Math.round(p.skills[k]||0):0;};
-  const stageInfo={};
-  ORDER.forEach(k=>{ let from=Infinity,to=0,ord=0,ppl=new Set();
-    mem.forEach(p=>{(sim.blocks[p.id]||[]).forEach(x=>{ if(x.k===k){from=Math.min(from,x.from);to=Math.max(to,x.to);ord+=x.ord||0;ppl.add(p.id);} });});
-    if(from<Infinity)stageInfo[k]={from,to,ord:Math.round(ord),n:ppl.size,main:stMain[k]}; });
+  // gom KHỐI theo từng khâu, đọc THẲNG từ biểu đồ để mô tả khớp 100% (ai mở, khi nào người chính vào, ai phụ lúc nào)
+  const stageBlocks={}; ORDER.forEach(k=>stageBlocks[k]=[]);
+  mem.forEach(p=>{ (sim.blocks[p.id]||[]).forEach(x=>{ if(stageBlocks[x.k]) stageBlocks[x.k].push({id:p.id,from:x.from,to:x.to,ord:x.ord||0,isMain:stMain[x.k]===p.id}); }); });
+  const sortF=arr=>arr.slice().sort((a,b)=>a.from-b.from||b.to-a.to);
+  const suppTimes=(arr,exclId)=>arr.filter(e=>e.id!==exclId).sort((a,b)=>a.from-b.from).map(e=>`${nm(e.id)} <span class="wt">${clk(e.from)}–${clk(e.to)}</span>`).join(', ');
   let bi=1; const steps=[];
-  const xi=stageInfo['xacnhan'];
-  if(xi){ const dur=Math.max(1,Math.round(xi.to-xi.from)); const rr=Math.round(xi.ord/(dur/60)); const per100=xi.ord>0?(dur/xi.ord*100):0;
-    steps.push(`<div class="cstep"><b>Bước ${bi++} — 🖥️ Xác nhận đơn (1 người · 1 máy):</b> ${nm(xi.main)} mở ca lúc ${clk(xi.from)}, xác nhận <b>${xi.ord} đơn</b> trong ~${dur}'${rr?` (~${rr} đơn/h`:' ('}${per100?`, ≈ ${per100.toFixed(1)}' mỗi 100 đơn`:''}). Chung 1 máy nên chỉ 1 người làm; người phụ chỉ vào <i>thay</i> khi người trước xong, không làm song song.</div>`); }
-  const ni=stageInfo['nhat'];
-  if(ni){ steps.push(`<div class="cstep"><b>Bước ${bi++} — 📦 Cả team dồn Nhặt:</b> Từ ${clk(ni.from)}, <b>${ni.n} người</b> cùng nhặt cho đơn chảy nhanh, tạo đệm cho dây chuyền. <b>${nm(ni.main)}</b> nhặt khoẻ nhất (${skOf(ni.main,'nhat')} đơn/h) nên <b>làm chính</b> giữ nhịp; khi đủ đệm, người khác lần lượt tách sang khâu sau.</div>`); }
-  const casLines=WORK.filter(k=>k!=='nhat').map(k=>{ const si=stageInfo[k]; if(!si)return ''; const isBn=k===bnK;
-    return `<div class="cstep"><b>Bước ${bi++} — ${stIcon[k]||''} ${stN(k)}${isBn?' 🔴 nút thắt':''}:</b> mở lúc ${clk(si.from)}; <b>${nm(si.main)}</b> chủ trì (giỏi ${stN(k)} nhất — ${skOf(si.main,k)} đơn/h)${isBn?', <b>neo suốt</b> vì đây là điểm chậm nhất — người mạnh khác xong khâu trước dồn xuống phụ':', ai rảnh ghé phụ thêm'}. ~${si.ord} đơn.</div>`; }).filter(Boolean).join('');
-  const whyTxt=`<div class="cstep" style="border-color:#f3c98a;background:#fffaf0"><b>➡️ Vì sao phân vai vậy?</b> Mỗi khâu đặt đúng <b>1 người làm chính = người có skill cao nhất khâu đó</b> (theo bảng kỹ năng) để khâu chạy nhanh nhất; người giỏi được "neo" đúng sở trường, ai xong sớm xuống phụ khâu nghẽn (<b>${stN(bnK)}</b>). 👑 Bà Chúa Kho chỉ vào khi thiếu người.</div>`;
+  // Bước 1 — Xác nhận đơn
+  const xb=sortF(stageBlocks['xacnhan'])[0];
+  if(xb){ const dur=Math.max(1,Math.round(xb.to-xb.from)); const rr=Math.round(xb.ord/(dur/60)); const per100=xb.ord>0?(dur/xb.ord*100):0;
+    steps.push(`<div class="cstep"><b>Bước ${bi++} — 🖥️ Xác nhận đơn (1 người · 1 máy):</b> ${nm(xb.id)} mở ca lúc ${clk(xb.from)}, xác nhận <b>${Math.round(xb.ord)} đơn</b> trong ~${dur}'${rr?` (~${rr} đơn/h, ≈ ${per100.toFixed(1)}' mỗi 100 đơn)`:''}. Chung 1 máy nên chỉ 1 người làm; người phụ chỉ vào <i>thay</i> khi người trước xong, không làm song song.</div>`); }
+  // Bước 2 — Nhặt: cả team cùng vào, người chính ở lại lâu nhất
+  const nb=sortF(stageBlocks['nhat']);
+  if(nb.length){ const start=nb[0].from; const mainE=nb.find(e=>e.isMain)||nb[0]; const others=nb.filter(e=>e.id!==mainE.id);
+    const firstLeave=others.length?others.slice().sort((a,b)=>a.to-b.to)[0].to:mainE.to;
+    steps.push(`<div class="cstep"><b>Bước ${bi++} — 📦 Cả team dồn Nhặt:</b> Từ ${clk(start)}, <b>${nb.length} người</b> cùng vào nhặt cho đơn chảy nhanh, tạo đệm. <b>${nm(mainE.id)}</b> nhặt khoẻ nhất (${skOf(mainE.id,'nhat')} đơn/h) <b>làm chính</b>, ở lại đến ${clk(mainE.to)}; người khác tách dần sang khâu sau (sớm nhất ~${clk(firstLeave)}).</div>`); }
+  // Bước 3+ — các khâu sau: nói RÕ ai mở khâu (thường là người phụ), khi nào người chính xong khâu trước mới vào
+  WORK.filter(k=>k!=='nhat').forEach(k=>{ const arr=sortF(stageBlocks[k]); if(!arr.length)return;
+    const isBn=k===bnK; const opener=arr[0]; const mainE=arr.find(e=>e.isMain)||opener; const ord=Math.round(arr.reduce((a,e)=>a+e.ord,0));
+    let openTxt;
+    if(opener.id===mainE.id){ openTxt=`mở lúc ${clk(mainE.from)} — <b>${nm(mainE.id)}</b> (giỏi ${stN(k)} nhất, ${skOf(mainE.id,k)} đơn/h) vào trực tiếp <b>làm chính</b>, neo đến ${clk(mainE.to)}`; }
+    else { openTxt=`mở lúc ${clk(opener.from)} do <b>${nm(opener.id)}</b> vào trước <i>(hỗ trợ, để khâu khỏi nghẽn)</i>; đến ${clk(mainE.from)} <b>${nm(mainE.id)}</b> (giỏi ${stN(k)} nhất, ${skOf(mainE.id,k)} đơn/h) xong khâu trước nên sang <b>làm chính</b>, neo đến ${clk(mainE.to)}`; }
+    const supps=suppTimes(arr,mainE.id);
+    steps.push(`<div class="cstep"><b>Bước ${bi++} — ${stIcon[k]||''} ${stN(k)}${isBn?' 🔴 nút thắt':''}:</b> ${openTxt}.${isBn?' Đây là điểm chậm nhất nên người mạnh neo suốt, ai xong khâu trước đều dồn xuống phụ.':''}${supps?` <span style="color:#555">Người phụ: ${supps}.</span>`:''} ~${ord} đơn.</div>`);
+  });
+  const whyTxt=`<div class="cstep" style="border-color:#f3c98a;background:#fffaf0"><b>➡️ Vì sao phân vai vậy?</b> Mỗi khâu đặt đúng <b>1 người làm chính = người có skill cao nhất khâu đó</b> (theo bảng kỹ năng) để khâu chạy nhanh nhất. Người phụ chỉ <i>mở khâu trước</i> cho đơn khỏi nghẽn, đến khi người chính xong khâu của mình mới vào nhận chính. Ai xong sớm xuống phụ khâu nghẽn (<b>${stN(bnK)}</b>). 👑 Bà Chúa Kho chỉ vào khi thiếu người.</div>`;
   const crabNote=(S.demand&&S.demand.crabSku>0)?`<div class="cstep" style="border-color:#e8a; background:#fff5f8">🦀 <b>Crabthing linh hoạt:</b> ai chạy đơn <b>xong sớm</b> mà Crabthing đang thiếu thì nhảy sang phụ (không cứng nhắc tách riêng 1 người từ đầu). Ngược lại, người Crabthing dùng <b>30' đầu ca</b> nhặt đơn cùng team trước khi sang Crabthing.</div>`:'';
-  const coordTxt=steps.join('')+casLines+whyTxt+crabNote;
+  const coordTxt=steps.join('')+whyTxt+crabNote;
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
   const gap=Math.max(0,need-cap);
   const adv = overCa ? staffingNote(cs) : '';
