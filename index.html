@@ -66,6 +66,11 @@
   .daform-h{font-weight:700;font-size:13px;color:#1d4e89;margin-bottom:6px}
   .daform-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
   .cstep{margin:5px 0;font-size:12.5px;line-height:1.6;padding-left:8px;border-left:2px solid #cdd9f5}
+  .bosstoggle{margin:7px 0;padding:8px 11px;border-radius:9px;font-size:12.5px}
+  .bosstoggle label{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-weight:600}
+  .bosstoggle.on{background:#fff7ec;border:1px solid #f0c987}
+  .bosstoggle.off{background:#fdeef0;border:1px solid #efb6c0}
+  .bosstoggle .hint{margin-top:3px;font-weight:400}
   .onbadge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;background:#eafaf0;border:1px solid #bfe6cf;font-size:12.5px}
   .ondot{width:8px;height:8px;border-radius:50%;background:#27c06a;box-shadow:0 0 0 3px rgba(39,192,106,.2);flex:none}
   /* accordion mục con trong Cài đặt */
@@ -307,7 +312,7 @@
       </table>
       <div class="row" style="margin-top:14px;background:var(--chip);padding:12px;border-radius:10px">
         <div><label class="fld">🦀 Crabthing — SKU/ngày (mảng việc riêng)</label><input id="dm-crab-sku" type="number" step="1" onchange="S.demand.crabSku=Math.max(0,+this.value||0);saveAll();renderDemand()"></div>
-        <div><label class="fld">Năng suất Crabthing (SKU/người/ngày sáng-chiều)</label><input id="cf-crab-rate" type="number" step="1" onchange="S.config.crabRate=Math.max(1,+this.value||30);saveAll();renderDemand()"></div>
+        <div><label class="fld">Năng suất Crabthing (SKU / người / CA)</label><input id="cf-crab-rate" type="number" step="1" onchange="S.config.crabRate=Math.max(1,+this.value||30);saveAll();renderDemand()"><small class="hint" id="crabRateHint"></small></div>
         <div><label class="fld">Người Crab hỗ trợ chạy đơn (giờ/ca)</label><input id="cf-crab-help" type="number" step="0.25" min="0" onchange="S.config.crabHelpHours=Math.max(0,+this.value||0);saveAll();renderAll()"><small class="hint">Vd 0.5 = nhặt đơn 30' đầu rồi mới sang crab (cộng vào năng lực ca)</small></div>
         <div style="display:flex;align-items:flex-end"><small class="hint">Người làm Crabthing sẽ KHÔNG chạy đơn Shopee+Tiktok. Ưu tiên xếp người chạy đơn trước, dư mới làm Crabthing.</small></div>
       </div>
@@ -591,8 +596,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "1.4"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-76 (online lên header; gộp đăng xuất vào chip vai trò; gộp Tài khoản vào Cài đặt dạng accordion; Cài đặt chỉ admin)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "1.5"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-77 (nút tích Bà Chúa Kho bận->kịch bản mới; Crabthing 30 SKU/ca; người rảnh nhảy sang Crabthing hiện trên biểu đồ+kịch bản)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1097,6 +1102,7 @@ function renderDemand(){
   document.getElementById('dm-sunday-off').checked=S.config.sundayOff!==false;
   document.getElementById('dm-crab-sku').value=S.demand.crabSku||0;
   document.getElementById('cf-crab-rate').value=S.config.crabRate||30;
+  {const crh=document.getElementById('crabRateHint'); const caH=S.config.caHours||4; const cr=S.config.crabRate||30; if(crh)crh.innerHTML=`≈ <b>${(cr/caH).toFixed(1)} SKU/giờ</b> · ${cr*2} SKU/ngày (2 ca). Người chạy đơn xong sớm có thể nhảy sang làm với tốc độ này.`;}
   const cch=document.getElementById('cf-crab-help'); if(cch)cch.value=S.config.crabHelpHours!=null?S.config.crabHelpHours:0.5;
   const plats=[['shopee','Shopee'],['tiktok','Tiktok']]; // Crabthing tách riêng, không tính vào đơn
   document.getElementById('demandBody').innerHTML=plats.map(p=>`<tr>
@@ -1762,7 +1768,7 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   const selected=Object.values(byId); selected.forEach(p=>p.cas=p.pca.length);
   const inSelAny=new Set(selected.map(p=>p.id));
   // (5) CRAB — theo TỪNG CA: mỗi ca chỉ cần đủ người cho (crabD/2) SKU (1 người = 15 SKU/ca). Lấy người DƯ, cân bằng ngày công.
-  const perCa=(S.config.crabRate||30)/2;        // SKU 1 người làm trong 1 ca
+  const perCa=(S.config.crabRate||30);          // SKU 1 người làm trong 1 CA (năng suất nhập theo CA)
   const crabPerCa = crabD>0 ? crabD/2 : 0;       // SKU cần mỗi ca
   const fairCrab=(a,b)=>((acc[a.id]||0)-(acc[b.id]||0)) || ((a.type==='PT'?1:0)-(b.type==='PT'?1:0)) || (pr(b)-pr(a));
   const crabByCa={'Sáng':[],'Chiều':[]}; const crabIds=new Set(); let crabCap=0;
@@ -1858,15 +1864,19 @@ function planDay(d, acc){
   const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
   let sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
   // 👑 TRIỆU HỒI BÀ CHÚA KHO: thiếu ĐƠN trên ngưỡng (mặc định >50 đơn) HOẶC thiếu người làm CRABTHING
-  let summon=null, bossCrab=false; const boss=bossStaff();
+  let summon=null, bossCrab=false, bossDeclined=false; const boss=bossStaff();
+  const bossOff=!!(S.bossOff&&S.bossOff[ds]); // admin bỏ tích = Bà Chúa Kho bận, KHÔNG tham gia ngày này
   if(boss){
     const cap0=useChain()?sd.chainCap:sd.ordersCap; const gap=orders-cap0;
     // 🚨 KHÂU TRỐNG SKILL: khâu mà KHÔNG ai trong team biết làm (skill>0) -> BẮT BUỘC gọi Bà Chúa Kho (vd vắng người duy nhất biết Xác nhận). Người ko skill TUYỆT ĐỐI ko làm 1 mình.
     const skillGap=(orders>0)?S.stages.filter(s=>['Sáng','Chiều'].some(ca=>{const cm=sd.selected.filter(p=>(p.pca||[]).includes(ca)); return cm.length&&!cm.some(p=>(p.skills[s.key]||0)>0);})):[];
-    if(orders>0 && (gap>bossGap() || skillGap.length)){
+    const wantOrders = orders>0 && (gap>bossGap() || skillGap.length);
+    const wantCrab = !wantOrders && sd.crabShort;
+    if(bossOff){ if(wantOrders||wantCrab)bossDeclined=true; } // bận -> giữ nguyên kịch bản với người hiện có (đã là "thiếu")
+    else if(wantOrders){
       summon = skillGap.length ? ('KHÔNG AI biết làm khâu: '+skillGap.map(s=>s.name).join(', ')+' → gọi 👑') : ('thiếu '+Math.round(gap)+' đơn');
       pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); // cô ấy gánh ĐƠN full sức + phủ khâu trống skill
-    } else if(sd.crabShort){
+    } else if(wantCrab){
       summon='thiếu người làm Crabthing'; sd.crabShort=false; sd.crabCap=crabD; bossCrab=true;             // ngày đủ đơn -> boss làm crab cả 2 ca cho đủ
     }
   }
@@ -1882,7 +1892,7 @@ function planDay(d, acc){
   else if(!cov.fully)kind='short_skill';
   else if(leftoverH>=S.config.caHours)kind='surplus';
   else kind='ok';
-  return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,summon,
+  return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,summon,bossDeclined,bossOff,bossAvail:!!boss,
     ord:{selected:sd.selected,status:ordStatus,cov,capacity:sd.ordersCap,capacityChain:sd.chainCap,capacityMain:dayCapMain},
     crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap,dedi:sd.crabCapDedi,spill:sd.crabSpill,boss:bossCrab},
     finalRest:sd.rest,kind};
@@ -2173,9 +2183,10 @@ function fatigueFactor(min){ if(S.config&&S.config.fatigueOn===false)return 1; c
 function clockOf(ca,min){ const def=ca==='Chiều'?'13:30':'07:30'; let s=(S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def; const pr=String(s).split(':'); let tot=(+pr[0]||0)*60+(+pr[1]||0)+Math.round(min); tot=((tot%1440)+1440)%1440; const H=Math.floor(tot/60),M=tot%60; return H+'h'+(M<10?'0'+M:M); }
 // ===== MÔ PHỎNG SÓNG TỪNG PHÚT (Discrete Event Sim): ai làm gì, bao lâu, khi nào chuyển khâu =====
 // Bám lời giải cân bằng (LP) làm kế hoạch trạm; khâu của mình chưa có hàng -> xuống phụ khâu trước; cân bằng feed (ko nhồi người vượt mức khâu trước nuôi); có mệt mỏi.
-function simWave(mem,N,capMin){
+function simWave(mem,N,capMin,crabD){
   const ORDER=S.stages.map(s=>s.key); const iOf=k=>ORDER.indexOf(k); const caH=S.config.caHours||4; const dtH=1/60;
   const rate0=(p,k)=>(p.skills[k]||0);
+  const crabPerMin=(S.config.crabRate||30)/caH/60; let crabRem=crabD||0; // 🦀 người rảnh nhảy sang Crabthing (SKU/ca ÷ giờ ÷ 60)
   if(!mem.length||N<=0) return {makespan:0,blocks:{},bnK:ORDER[ORDER.length-1],sStart:{},sEnd:{}};
   const pt=pipelineThroughput(mem.map(p=>Object.assign({},p,{hours:caH})));
   const budget={}; mem.forEach(p=>{budget[p.id]={}; ORDER.forEach(k=>budget[p.id][k]=Math.round(((pt.assign[p.id]||{})[k]||0)*60));});
@@ -2206,6 +2217,8 @@ function simWave(mem,N,capMin){
     const advK={};
     ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); advK[k]=adv; if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
     mem.forEach(p=>{const k=asg[p.id];if(!k)return; const myr=rate0(p,k)*fatigueFactor(t); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
+    // 🦀 CRABTHING: ai KHÔNG được phân khâu nào (rảnh, chờ trạm) mà còn Crabthing thì nhảy sang làm
+    if(crabRem>1e-9){ mem.forEach(p=>{ if(asg[p.id]||crabRem<=1e-9)return; const cr=crabPerMin*fatigueFactor(t); if(cr<=0)return; const add=Math.min(cr,crabRem); crabRem-=add; const L=log[p.id];const l=L[L.length-1]; if(l&&l.k==='crab'&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+add;}else L.push({k:'crab',from:t,to:t+1,ord:add}); }); }
     t++;
   }
   const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});
@@ -2269,10 +2282,10 @@ function staffingNote(cs){ const adv=staffingAdvice(cs); if(!adv)return '';
   return `<div class="advnote">🆘 <b>Ca thiếu năng lực</b> — trong giờ ca chỉ kịp ~<b>${adv.done0}/${adv.need}</b> đơn (thiếu <b>${adv.gap}</b>). Hai cách bù:${h1}${h2}<div style="margin-top:4px;font-size:11px;opacity:.85">→ Ưu tiên thêm người (tối đa 3) trước; còn thiếu mới kéo dài giờ; hoặc giãn bớt đơn sang ngày sau.</div></div>`;
 }
 // màu từng khâu cho biểu đồ
-const STAGE_COLOR={xacnhan:['#8b5cf6','XN'],nhat:['#3b82f6','Nhặt'],kiem:['#06b6d4','Kiểm'],bocxoc:['#f59e0b','Bọc'],goihop:['#ef4444','Gói'],bitdau:['#65a30d','Bịt'],tit:['#10b981','Tít']};
+const STAGE_COLOR={xacnhan:['#8b5cf6','XN'],nhat:['#3b82f6','Nhặt'],kiem:['#06b6d4','Kiểm'],bocxoc:['#f59e0b','Bọc'],goihop:['#ef4444','Gói'],bitdau:['#65a30d','Bịt'],tit:['#10b981','Tít'],crab:['#db2777','🦀 Crab']};
 // BIỂU ĐỒ THỜI GIAN (Gantt): mỗi người 1 dòng, khối màu = khâu, trục giờ, cuộn ngang được
 function waveGantt(mem,sim,ca,shiftMin){
-  const stN=k=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;}; const clk=m=>clockOf(ca,m);
+  const stN=k=>k==='crab'?'🦀 Crabthing':(()=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;})(); const clk=m=>clockOf(ca,m);
   const mk=sim.makespan||1; const span=Math.max(mk, shiftMin||mk); // trục chạy đủ khung giờ ca
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
@@ -2290,13 +2303,15 @@ function waveGantt(mem,sim,ca,shiftMin){
   let axis=''; for(let m=0;m<=span;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
   const axisRow=`<div style="position:relative;height:16px">${axis}</div>`;
   const trackRows=people.map(p=>{ const b=sim.blocks[p.id];
-    const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/span*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const od=s.ord?Math.round(s.ord)+'đ':'';
-      const isMain=(stageMain[s.k]===p.id); const mk2=isMain?'★ ':'↗ '; const hatch=isMain?'':'background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.32) 0 4px,transparent 4px 9px);';
+    const segs=b.map(s=>{const Lp=pct(s.from),Wp=Math.max(0.4,pct(s.to-s.from)),Wpx=(s.to-s.from)/span*apxW;const cc=STAGE_COLOR[s.k]||['#888','?'];const isCrab=s.k==='crab';const od=s.ord?Math.round(s.ord)+(isCrab?' SKU':'đ'):'';
+      const isMain=isCrab?true:(stageMain[s.k]===p.id); const mk2=isCrab?'':(isMain?'★ ':'↗ '); const hatch=(isMain||isCrab)?'':'background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.32) 0 4px,transparent 4px 9px);';
       let lab=''; if(Wpx>=50)lab=`<span style="font-weight:600;white-space:nowrap">${mk2}${cc[1]}${od?' · '+od:''}</span><span style="font-size:9px;opacity:.95;white-space:nowrap">${clk(s.from)}–${clk(s.to)}</span>`; else if(Wpx>=20)lab=`<span style="font-weight:600;white-space:nowrap">${mk2}${cc[1]}</span>`;
-      return `<div title="${isMain?'★ Làm chính':'↗ Hỗ trợ'}: ${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} đơn" style="position:absolute;left:${Lp.toFixed(3)}%;width:${Wp.toFixed(3)}%;top:2px;height:28px;background-color:${cc[0]};${hatch}border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15;padding:0 2px;box-sizing:border-box">${lab}</div>`;}).join('');
+      return `<div title="${isCrab?'🦀 Crabthing (lúc rảnh)':(isMain?'★ Làm chính':'↗ Hỗ trợ')}: ${stN(s.k)} ${clk(s.from)}–${clk(s.to)} · ${Math.round(s.ord||0)} ${isCrab?'SKU':'đơn'}" style="position:absolute;left:${Lp.toFixed(3)}%;width:${Wp.toFixed(3)}%;top:2px;height:28px;background-color:${cc[0]};${hatch}border-radius:3px;color:#fff;font-size:10px;text-align:center;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.15;padding:0 2px;box-sizing:border-box">${lab}</div>`;}).join('');
     return `<div style="position:relative;height:32px;background:repeating-linear-gradient(to right,rgba(0,0,0,.10) 0,rgba(0,0,0,.10) 1px,transparent 1px,transparent ${hourPct.toFixed(3)}%),repeating-linear-gradient(to right,rgba(0,0,0,.05) 0,rgba(0,0,0,.05) 1px,transparent 1px,transparent ${quarterPct.toFixed(3)}%)">${segs}</div>`;
   }).join('');
-  const legend=S.stages.map(s=>{const cc=STAGE_COLOR[s.key]||['#888','']; return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 3px 0;font-size:10px;white-space:nowrap"><span style="width:11px;height:11px;background:${cc[0]};border-radius:2px;display:inline-block"></span>${stN(s.key)}</span>`;}).join('');
+  const hasCrab=people.some(p=>(sim.blocks[p.id]||[]).some(b=>b.k==='crab'));
+  const legKeys=S.stages.map(s=>s.key).concat(hasCrab?['crab']:[]);
+  const legend=legKeys.map(k=>{const cc=STAGE_COLOR[k]||['#888','']; return `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 3px 0;font-size:10px;white-space:nowrap"><span style="width:11px;height:11px;background:${cc[0]};border-radius:2px;display:inline-block"></span>${stN(k)}</span>`;}).join('');
   return `<div style="margin:6px 0">`+
     `<div style="margin-bottom:3px;line-height:1.6">${legend}</div>`+
     `<div style="font-size:10px;color:#777;margin-bottom:6px">★ (ô đặc) = <b>người làm chính</b> khâu đó (skill mạnh nhất trong nhóm) · ↗ (ô kẻ sọc) = <b>người hỗ trợ</b>. Cột tên: nhãn ★ = khâu người đó làm chính; (phụ) = chỉ đi hỗ trợ.</div>`+
@@ -2309,8 +2324,8 @@ function wavePlaybook(cs,ca){
   const mem0=(cs&&cs.members)||[]; const M=mem0.length; if(M<1) return '';
   const caH=S.config.caHours||4;
   const ORDER=S.stages.map(s=>s.key), WORK=ORDER.filter(k=>k!=='xacnhan');
-  const stN=k=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;};
-  const stIcon={xacnhan:'🖥️',nhat:'📦',kiem:'🔎',bocxoc:'📦',goihop:'🎁',bitdau:'🏷️',tit:'✅'};
+  const stN=k=>k==='crab'?'🦀 Crabthing':(()=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;})();
+  const stIcon={xacnhan:'🖥️',nhat:'📦',kiem:'🔎',bocxoc:'📦',goihop:'🎁',bitdau:'🏷️',tit:'✅',crab:'🦀'};
   const rate=(p,k)=>(p.skills[k]||0);
   const need=Math.round((cs&&cs.need)||0); const targetR=caH>0?Math.round(need/caH):0;
   const skl=k=>mem0.filter(p=>!p.boss&&rate(p,k)>0);
@@ -2322,7 +2337,8 @@ function wavePlaybook(cs,ca){
   const mem=mem0.map(p=>Object.assign({},p,{hours:caH}));
   const shiftMin=caH*60; const cap=Math.round(pipelineThroughput(mem).cap);
   const overCa=cap<need-1; const chartN=overCa?Math.max(1,cap):need; // ca quá tải -> chỉ mô phỏng phần làm được trong ca
-  const sim=simWave(mem,chartN); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
+  const crabPool=(S.demand&&S.demand.crabSku)||0; // 🦀 cho người rảnh nhảy sang Crabthing
+  const sim=simWave(mem,chartN,null,crabPool); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
   const gantt=waveGantt(mem,sim,ca,shiftMin);
   // bản chữ (thu gọn) cho ai cần giờ chính xác — người giỏi lên trên
   const sumSk2=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
@@ -2339,7 +2355,7 @@ function wavePlaybook(cs,ca){
   const nm=id=>{const p=mem.find(x=>x.id===id);return p?((p.boss?'👑 ':'')+esc(p.name)):'';};
   const skOf=(id,k)=>{const p=mem.find(x=>x.id===id);return p?Math.round(p.skills[k]||0):0;};
   // gom KHỐI theo từng khâu, đọc THẲNG từ biểu đồ để mô tả khớp 100% (ai mở, khi nào người chính vào, ai phụ lúc nào)
-  const stageBlocks={}; ORDER.forEach(k=>stageBlocks[k]=[]);
+  const stageBlocks={crab:[]}; ORDER.forEach(k=>stageBlocks[k]=[]);
   mem.forEach(p=>{ (sim.blocks[p.id]||[]).forEach(x=>{ if(stageBlocks[x.k]) stageBlocks[x.k].push({id:p.id,from:x.from,to:x.to,ord:x.ord||0,isMain:stMain[x.k]===p.id}); }); });
   const sortF=arr=>arr.slice().sort((a,b)=>a.from-b.from||b.to-a.to);
   const suppTimes=(arr,exclId)=>arr.filter(e=>e.id!==exclId).sort((a,b)=>a.from-b.from).map(e=>`${nm(e.id)} <span class="wt">${clk(e.from)}–${clk(e.to)}</span>`).join(', ');
@@ -2362,9 +2378,16 @@ function wavePlaybook(cs,ca){
     const supps=suppTimes(arr,mainE.id);
     steps.push(`<div class="cstep"><b>Bước ${bi++} — ${stIcon[k]||''} ${stN(k)}${isBn?' 🔴 nút thắt':''}:</b> ${openTxt}.${isBn?' Đây là điểm chậm nhất nên người mạnh neo suốt, ai xong khâu trước đều dồn xuống phụ.':''}${supps?` <span style="color:#555">Người phụ: ${supps}.</span>`:''} ~${ord} đơn.</div>`);
   });
-  const whyTxt=`<div class="cstep" style="border-color:#f3c98a;background:#fffaf0"><b>➡️ Vì sao phân vai vậy?</b> Mỗi khâu đặt đúng <b>1 người làm chính = người có skill cao nhất khâu đó</b> (theo bảng kỹ năng) để khâu chạy nhanh nhất. Người phụ chỉ <i>mở khâu trước</i> cho đơn khỏi nghẽn, đến khi người chính xong khâu của mình mới vào nhận chính. Ai xong sớm xuống phụ khâu nghẽn (<b>${stN(bnK)}</b>). 👑 Bà Chúa Kho chỉ vào khi thiếu người.</div>`;
-  const crabNote=(S.demand&&S.demand.crabSku>0)?`<div class="cstep" style="border-color:#e8a; background:#fff5f8">🦀 <b>Crabthing linh hoạt:</b> ai chạy đơn <b>xong sớm</b> mà Crabthing đang thiếu thì nhảy sang phụ (không cứng nhắc tách riêng 1 người từ đầu). Ngược lại, người Crabthing dùng <b>30' đầu ca</b> nhặt đơn cùng team trước khi sang Crabthing.</div>`:'';
-  const coordTxt=steps.join('')+whyTxt+crabNote;
+  // Bước 🦀 — Crabthing: người rảnh nhảy sang làm (đọc thẳng từ biểu đồ)
+  const crabArr=sortF(stageBlocks['crab']);
+  let crabStep='';
+  if(crabArr.length){ const totSku=Math.round(crabArr.reduce((a,e)=>a+e.ord,0));
+    const byPer=crabArr.sort((a,b)=>a.from-b.from).map(e=>`<b>${nm(e.id)}</b> <span class="wt">${clk(e.from)}–${clk(e.to)}</span> (~${Math.round(e.ord)} SKU)`).join(', ');
+    crabStep=`<div class="cstep" style="border-color:#e8a;background:#fff5f8"><b>Bước ${bi++} — 🦀 Crabthing (lúc rảnh):</b> Ai xong việc / đang chờ trạm mà các khâu khác không còn việc phù hợp thì nhảy sang Crabthing (~<b>${(S.config.crabRate/caH).toFixed(1)} SKU/h</b>). Tổng ~<b>${totSku} SKU</b>: ${byPer}.</div>`;
+  }
+  const whyTxt=`<div class="cstep" style="border-color:#f3c98a;background:#fffaf0"><b>➡️ Vì sao phân vai vậy?</b> Mỗi khâu đặt đúng <b>1 người làm chính = người có skill cao nhất khâu đó</b> (theo bảng kỹ năng) để khâu chạy nhanh nhất. Người phụ chỉ <i>mở khâu trước</i> cho đơn khỏi nghẽn, đến khi người chính xong khâu của mình mới vào nhận chính. Ai xong sớm xuống phụ khâu nghẽn (<b>${stN(bnK)}</b>), hết việc khâu thì sang 🦀 Crabthing. 👑 Bà Chúa Kho chỉ vào khi thiếu người.</div>`;
+  const crabNote=(S.demand&&S.demand.crabSku>0)?`<div class="cstep" style="border-color:#e8a; background:#fff5f8">🦀 <b>Crabthing linh hoạt:</b> không cứng nhắc tách riêng 1 người từ đầu — ai chạy đơn <b>xong sớm / đang rảnh</b> thì nhảy sang làm Crabthing; ngược lại người Crabthing dùng <b>30' đầu ca</b> nhặt đơn cùng team.</div>`:'';
+  const coordTxt=steps.join('')+crabStep+whyTxt+crabNote;
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
   const gap=Math.max(0,need-cap);
   const adv = overCa ? staffingNote(cs) : '';
@@ -2381,6 +2404,17 @@ function wavePlaybook(cs,ca){
     adv+
     `</div>`;
 }
+/* ---- Bà Chúa Kho: nút tích tham gia / bận ---- */
+function bossToggle(r){
+  if(!r||r.type==='closed'||!r.bossAvail)return '';
+  const ds=r.ds, off=r.bossOff, name=esc((S.config.bossName||'Bà Chúa Kho'));
+  if(!r.summon && !r.bossDeclined && !off)return ''; // ngày không cần đến cô ấy
+  if(off){
+    return `<div class="bosstoggle off"><label><input type="checkbox" onchange="toggleBossOff('${ds}')"> 👑 <b>${name} đang BẬN — không tham gia</b></label><div class="hint">Đã tính kịch bản chỉ với người hiện có${r.bossDeclined?' — <b style="color:var(--bad)">vẫn còn thiếu</b>, xem đề xuất bù bên dưới':''}. Tích lại nếu cô ấy rảnh.</div></div>`;
+  }
+  return `<div class="bosstoggle on"><label><input type="checkbox" checked onchange="toggleBossOff('${ds}')"> 👑 <b>${name} tham gia</b> (cân team)</label><div class="hint">Bỏ tích nếu cô ấy bận — phần mềm tính lại kịch bản ngay với người hiện có.</div></div>`;
+}
+function toggleBossOff(ds){ S.bossOff=S.bossOff||{}; if(S.bossOff[ds])delete S.bossOff[ds]; else S.bossOff[ds]=true; saveAll(); renderAll(); }
 /* ---- chi tiết TUẦN ---- */
 let PLAN_SEL=null; // ô ngày đang chọn trong dải 7 ngày
 function isTodayD(d){const n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
@@ -2520,6 +2554,7 @@ function renderWeekView(){
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${realSel}</b> người${bossIn?' <span class="pill" style="color:#b8860b" title="Bà Chúa Kho được triệu hồi, ngoài người đăng ký">+👑</span>':''} · đăng ký <b>${totalReg}</b></div>
       ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">Xuất trận cân team — ${esc(r.summon)}</span></div>`:''}
+      ${bossToggle(r)}
       ${r.type!=='closed'?dayActualForm(r):''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       <div class="caRow">${caSection}</div>
