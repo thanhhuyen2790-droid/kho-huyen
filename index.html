@@ -68,6 +68,22 @@
   .cstep{margin:5px 0;font-size:12.5px;line-height:1.6;padding-left:8px;border-left:2px solid #cdd9f5}
   .onbadge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;background:#eafaf0;border:1px solid #bfe6cf;font-size:12.5px}
   .ondot{width:8px;height:8px;border-radius:50%;background:#27c06a;box-shadow:0 0 0 3px rgba(39,192,106,.2);flex:none}
+  /* accordion mục con trong Cài đặt */
+  .setSec{border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden;background:#fff}
+  .setSec>summary{cursor:pointer;list-style:none;padding:12px 14px;font-weight:700;font-size:14px;background:#f6f8fc;display:flex;align-items:center;gap:9px}
+  .setSec>summary::-webkit-details-marker{display:none}
+  .setSec>summary::before{content:'▸';color:var(--brand);font-size:12px}
+  .setSec[open]>summary::before{content:'▾'}
+  .setSec[open]>summary{border-bottom:1px solid var(--line)}
+  .setSec>.setBody{padding:14px}
+  /* menu người dùng (gộp đăng xuất) */
+  .usermenu-wrap{position:relative;display:inline-block}
+  #roleChip{cursor:pointer}
+  .usermenu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;z-index:60;min-width:160px}
+  .umhead{font-size:11.5px;color:var(--muted);padding:4px 12px 6px}
+  .umitem{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 12px;border-radius:7px;cursor:pointer;font-size:13px;color:#222;font-weight:600}
+  .umitem:hover{background:#f1f5fb}
+  #onlineHdr{cursor:pointer;background:#eafaf0;color:#0a7a43}
   .caRow .caSec{flex:1 1 360px;min-width:300px;border-top:0;border:1px solid var(--line);border-radius:10px;padding:9px;margin-top:0}
   @media(max-width:760px){ .daystrip{grid-template-columns:repeat(7,minmax(96px,1fr));overflow-x:auto} .caRow .caSec{flex:1 1 100%} }
   .day.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
@@ -243,10 +259,16 @@
   </div>
   <div class="hdr-right" id="hdrRight" style="display:none">
     <span class="rolechip" id="connBadge" title="Trạng thái kết nối"></span>
+    <span class="rolechip" id="onlineHdr" style="display:none" title="Số người đang online — bấm để xem chi tiết" onclick="openSettingsAccounts()"></span>
     <span class="rolechip" id="saveStatus" title="Trạng thái lưu dữ liệu"></span>
-    <span class="rolechip" id="roleChip"></span>
+    <div class="usermenu-wrap">
+      <span class="rolechip" id="roleChip" title="Bấm để đăng xuất" onclick="toggleUserMenu(event)"></span>
+      <div id="userMenu" class="usermenu" style="display:none">
+        <div class="umhead" id="umHead"></div>
+        <button class="umitem" onclick="logout()">🚪 Đăng xuất</button>
+      </div>
+    </div>
     <span class="rolechip" id="buildTag" title="Phiên bản phần mềm đang chạy" style="background:#eef4ff;color:#1d6fe0;font-weight:700"></span>
-    <button class="logout" onclick="logout()">Đăng xuất</button>
   </div>
 </header>
 <nav id="nav"></nav>
@@ -404,18 +426,19 @@
     </div>
   </section>
 
-  <!-- TAB: TÀI KHOẢN -->
-  <section class="tab" id="tab-accounts">
+  <!-- TAB: CÀI ĐẶT (gồm Tài khoản) — CHỈ ADMIN xem & sửa -->
+  <section class="tab" id="tab-config">
     <div class="card">
-      <h2>🟢 Đang online &amp; lịch sử đăng nhập</h2>
-      <p class="sub">Ai đang mở app ngay bây giờ — tự cập nhật, thoát ra/đóng tab khoảng 30 giây sẽ tự mất. Bên dưới là lịch sử các lượt đăng nhập gần đây.</p>
-      <div style="font-weight:600;margin-bottom:6px">Đang online</div>
+      <h2>🛠️ Cài đặt hệ thống</h2>
+      <p class="sub">🔒 Chỉ <b>Quản lý (Admin)</b> xem &amp; sửa được. Bấm từng mục bên dưới để mở ra chỉnh sửa.</p>
+      <details class="setSec" open><summary>👤 Tài khoản &amp; người đang online</summary>
+      <div class="setBody">
+      <div style="font-weight:600;margin-bottom:6px">🟢 Đang online</div>
       <div id="ac-online"></div>
-      <div style="font-weight:600;margin:16px 0 6px">Lịch sử đăng nhập gần đây</div>
+      <div style="font-weight:600;margin:16px 0 6px">🕘 Lịch sử đăng nhập gần đây</div>
       <div id="ac-history"></div>
-    </div>
-    <div class="card">
-      <h2>👤 Tài khoản nhân sự</h2>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <h3 style="margin:0 0 4px;font-size:15px">👤 Tài khoản nhân sự</h3>
       <p class="sub">Tạo tài khoản riêng cho từng nhân sự: chọn người có sẵn hoặc tự nhập tên → phần mềm tự sinh <b>mật khẩu 6 số</b> + <b>link đăng nhập riêng</b> (đã sẵn tên) để bạn gửi. Tích chọn họ được xem gì. Mỗi mật khẩu chỉ đăng nhập 1 thiết bị. Xoá tài khoản khi nghỉ việc.</p>
       <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
         <div><label class="fld" style="margin:0 0 2px">Chọn nhân sự có sẵn</label><select id="ac-staff" onchange="onAcStaffPick()" style="max-width:210px"></select></div>
@@ -426,13 +449,9 @@
       <label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ac-edit"> Cho phép <b>sửa dữ liệu</b> (không tích = chỉ được xem, tránh tự chỉnh)</label>
       <div id="ac-result"></div>
       <div id="ac-list" style="margin-top:16px"></div>
-    </div>
-  </section>
-
-  <!-- TAB: CÀI ĐẶT -->
-  <section class="tab" id="tab-config">
-    <div class="card" id="docCard">
-      <h2>📖 Cách phần mềm hoạt động (mô tả &amp; công thức)</h2>
+      </div></details>
+      <details class="setSec"><summary>📖 Cách sử dụng phần mềm</summary>
+      <div class="setBody" id="docCard">
       <p class="sub">Đọc phần này để hiểu phần mềm tính toán &amp; điều phối nhân sự như thế nào, dựa trên cơ sở gì — kể cả người chưa từng dùng. Bấm từng mục để mở.</p>
 
       <details open><summary><b>1. Phần mềm này làm gì?</b></summary>
@@ -516,9 +535,9 @@
         <p class="docnote">Thấy chỗ nào logic chưa khớp thực tế kho, ghi lại và yêu cầu chỉnh — phần mềm được thiết kế để điều chỉnh dần theo dữ liệu thật.</p>
         </div>
       </details>
-    </div>
-    <div class="card">
-      <h2>Cài đặt &amp; dữ liệu</h2>
+      </div></details>
+      <details class="setSec"><summary>⚙️ Cài đặt &amp; dữ liệu chung</summary>
+      <div class="setBody">
       <p class="sub">Thông số chung của kho.</p>
       <div class="row">
         <div><label class="fld">Số giờ mỗi ca</label><input id="cf-cah" type="number" step="0.5" onchange="saveAll();renderAll()"></div>
@@ -539,9 +558,9 @@
         <div><label class="fld">Gọi khi thiếu trên (đơn)</label><input id="cf-boss-thr" type="number" step="5" min="0" onchange="S.config.bossGap=Math.max(0,+this.value||50);saveAll();renderAll()"><small class="hint">Sau phân bổ còn thiếu quá số ĐƠN này thì triệu hồi (mặc định 50 đơn)</small></div>
       </div>
       <p class="note" style="margin-top:14px">Năng lực mỗi người ở từng khâu = <b>Tốc độ khâu × (điểm kỹ năng ÷ 10) × số giờ làm</b>. Mỗi đơn phải đi qua hết các khâu, nên <b>khâu chậm/yếu nhất là nút thắt</b>.</p>
-    </div>
-    <div class="card">
-      <h2>⏱️ Tốc độ xử lý từng khâu</h2>
+      </div></details>
+      <details class="setSec"><summary>⏱️ Tốc độ xử lý từng khâu</summary>
+      <div class="setBody">
       <p class="sub">Số đơn 1 người <b>giỏi tối đa (10/10 điểm)</b> xử lý được trong 1 giờ ở khâu đó. Người điểm thấp hơn chậm tương ứng. Hãy chỉnh theo thực tế kho của bạn.</p>
       <div id="stageRates"></div>
       <div class="toolbar" style="margin-top:16px">
@@ -550,9 +569,9 @@
         <button class="btn danger" onclick="if(confirm('Xoá toàn bộ dữ liệu và về mặc định?')){localStorage.removeItem(KEY);location.reload()}">Xoá tất cả</button>
       </div>
       <p class="note" style="margin-top:12px">Dữ liệu <b>tự động lưu</b> sau mỗi thay đổi (lên Cloud nếu đã kết nối, đồng thời lưu trên máy). Góc trên phải hiển thị trạng thái lưu. Nên thỉnh thoảng bấm <b>Xuất dữ liệu</b> để giữ thêm bản dự phòng ngoài.</p>
-    </div>
-    <div class="card">
-      <h2>🛟 Sao lưu &amp; khôi phục (Cloud)</h2>
+      </div></details>
+      <details class="setSec"><summary>🛟 Sao lưu &amp; khôi phục (Cloud)</summary>
+      <div class="setBody">
       <p class="sub">Hệ thống tự tạo bản sao lưu định kỳ trên Cloud (giữ 15 bản mới nhất). Nếu lỡ xoá/sửa nhầm, bạn khôi phục lại được.</p>
       <div class="toolbar">
         <button class="btn" onclick="pullCloud()">⬇️ Đồng bộ từ Cloud về máy</button>
@@ -560,6 +579,7 @@
         <button class="btn ghost" onclick="renderBackups()">↻ Làm mới danh sách</button>
       </div>
       <div id="backupList"></div>
+      </div></details>
     </div>
   </section>
 </main>
@@ -571,8 +591,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "1.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-75 (trạng thái ai đang online realtime + lịch sử đăng nhập trong tab Tài khoản)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "1.4"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-76 (online lên header; gộp đăng xuất vào chip vai trò; gộp Tài khoản vào Cài đặt dạng accordion; Cài đặt chỉ admin)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -855,8 +875,11 @@ function startPresence(){
 function stopPresence(){ try{ if(presChan){presChan.untrack&&presChan.untrack(); sb.removeChannel(presChan);} }catch(e){} presChan=null; ONLINE={}; clearInterval(presTick); }
 function onlineList(){ const out=[],seen={}; Object.values(ONLINE||{}).forEach(arr=>{ if(arr&&arr[0]){const r=arr[0]; if(!seen[r.cid]){seen[r.cid]=1; out.push(r);}} });
   return out.sort((a,b)=>((b.isAdmin?1:0)-(a.isAdmin?1:0))||((a.since||0)-(b.since||0))); }
-function renderOnline(){ const el=document.getElementById('ac-online'); if(!el)return;
+function renderOnline(){
   const u=onlineList();
+  const hdr=document.getElementById('onlineHdr');
+  if(hdr){ if(role==='admin'){ hdr.style.display='inline-block'; hdr.textContent='🟢 '+u.length+' online'; hdr.title=u.length?('Đang online: '+u.map(r=>r.name).join(', ')):'Chưa ai online'; } else hdr.style.display='none'; }
+  const el=document.getElementById('ac-online'); if(!el)return;
   el.innerHTML = u.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">`+u.map(r=>{
     const mins=Math.max(0,Math.round((Date.now()-(r.since||Date.now()))/60000));
     const dur=mins<1?'vừa vào':(mins<60?`${mins} phút`:`${Math.floor(mins/60)}h${mins%60?(mins%60)+'p':''}`);
@@ -869,6 +892,10 @@ function renderHistory(){ const el=document.getElementById('ac-history'); if(!el
   el.innerHTML = log.length ? `<table class="catbl"><thead><tr><th>Thời điểm</th><th>Tài khoản</th><th>Vai trò</th></tr></thead><tbody>`+log.map(e=>`<tr><td style="font-size:12px">${new Date(e.t).toLocaleString('vi-VN')}</td><td><b>${esc(e.name)}</b></td><td>${e.role==='admin'?'Admin':'User'}</td></tr>`).join('')+`</tbody></table>` : `<span class="hint">Chưa ghi lượt đăng nhập nào.</span>`;
 }
 function logLogin(name,rl){ S.loginLog=S.loginLog||[]; S.loginLog.push({name,role:rl,t:Date.now()}); if(S.loginLog.length>50)S.loginLog=S.loginLog.slice(-50); }
+/* ---- menu người dùng (gộp đăng xuất) + mở nhanh mục Tài khoản ---- */
+function toggleUserMenu(e){ if(e)e.stopPropagation(); const m=document.getElementById('userMenu'); if(!m)return; m.style.display=(m.style.display==='none'||!m.style.display)?'block':'none'; }
+function openSettingsAccounts(){ const b=document.querySelector('#nav button[data-t="config"]'); if(b)go('config',b); const d=document.querySelector('#tab-config .setSec'); if(d)d.open=true; }
+document.addEventListener('click',e=>{ const m=document.getElementById('userMenu'); if(m&&m.style.display==='block'&&!(e.target.closest&&e.target.closest('.usermenu-wrap')))m.style.display='none'; });
 function pickRole(r){
   loginRole=r;
   document.getElementById('role-admin').classList.toggle('on',r==='admin');
@@ -892,6 +919,7 @@ function doLogin(){
 }
 function logout(){
   stopPresence();
+  {const m=document.getElementById('userMenu'); if(m)m.style.display='none';}
   role=null;try{sessionStorage.removeItem('khoRole')}catch(e){}
   document.getElementById('pw').value='';
   document.getElementById('overlay').style.display='flex';
@@ -901,8 +929,11 @@ function logout(){
 function startApp(){
   document.getElementById('overlay').style.display='none';
   document.getElementById('hdrRight').style.display='flex';
-  if(CURACC&&S.accounts&&S.accounts[CURACC]){ const a=S.accounts[CURACC]; document.getElementById('roleChip').textContent='🙋 '+a.name; document.body.classList.toggle('viewonly',!a.canEdit); }
-  else { document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)'; document.body.classList.remove('viewonly'); }
+  let _who;
+  if(CURACC&&S.accounts&&S.accounts[CURACC]){ const a=S.accounts[CURACC]; _who='🙋 '+a.name; document.body.classList.toggle('viewonly',!a.canEdit); }
+  else { _who=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)'; document.body.classList.remove('viewonly'); }
+  document.getElementById('roleChip').textContent=_who+' ▾';
+  {const uh=document.getElementById('umHead'); if(uh)uh.textContent='Đang đăng nhập: '+_who;}
   {const bt=document.getElementById('buildTag'); if(bt){bt.textContent='Phiên bản '+VERSION; bt.title='Phiên bản '+VERSION+' · '+BUILD;}}
   setConnBadge();
   setSaveStatus(cloudMode?'saved':'local');
@@ -976,12 +1007,12 @@ const ALL_TABS=[
   ['staff','👥 Nhân sự','admin'],
   ['reg','🗓️ Đăng ký lịch','both'],
   ['approve','✅ Phê duyệt','admin'],
-  ['accounts','👤 Tài khoản','admin'],
   ['config','🛠️ Cài đặt','admin'],
 ];
-// các tính năng (tab) có thể cấp quyền xem cho tài khoản nhân sự
-const PERM_TABS=[['plan','Phân bổ & lịch chạy ca'],['reg','Đăng ký lịch (của mình)'],['demand','Chỉ tiêu đơn'],['staff','Bảng nhân sự & kỹ năng'],['approve','Phê duyệt lịch'],['config','Cài đặt hệ thống']];
-function visibleTabs(){ if(CURACC&&S.accounts&&S.accounts[CURACC]){const pr=S.accounts[CURACC].perms||[]; return ALL_TABS.filter(t=>pr.includes(t[0]));} return ALL_TABS.filter(t=>t[2]==='both'||t[2]===role); }
+// các tính năng (tab) có thể cấp quyền xem cho tài khoản nhân sự — KHÔNG có Cài đặt (chỉ admin)
+const PERM_TABS=[['plan','Phân bổ & lịch chạy ca'],['reg','Đăng ký lịch (của mình)'],['demand','Chỉ tiêu đơn'],['staff','Bảng nhân sự & kỹ năng'],['approve','Phê duyệt lịch']];
+// Cài đặt (config) + Tài khoản: CHỈ admin chung mới thấy; mọi tài khoản user đều bị loại trừ tuyệt đối
+function visibleTabs(){ if(CURACC&&S.accounts&&S.accounts[CURACC]){const pr=S.accounts[CURACC].perms||[]; return ALL_TABS.filter(t=>t[0]!=='config'&&pr.includes(t[0]));} return ALL_TABS.filter(t=>t[2]==='both'||t[2]===role); }
 function buildNav(){
   const n=document.getElementById('nav');
   n.innerHTML=visibleTabs().map((t,i)=>{
@@ -1006,7 +1037,7 @@ function go(t,btn){
   if(t==='reg')renderReg();
   if(t==='approve')renderApprove();
   if(t==='demand')renderDemand();
-  if(t==='config')renderBackups();
+  if(t==='config'){renderAccounts();renderBackups();}
   if(t==='staff'){renderSkillMatrix();renderAttendance();}
 }
 
