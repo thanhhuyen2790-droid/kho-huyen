@@ -62,6 +62,10 @@
   .ptile .pt-row{font-size:11px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .daydet{width:100%}
   .caRow{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
+  .daform{margin:8px 0;background:#f6fbff;border:1px solid #bcdcff;border-radius:9px;padding:9px 11px}
+  .daform-h{font-weight:700;font-size:13px;color:#1d4e89;margin-bottom:6px}
+  .daform-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .cstep{margin:5px 0;font-size:12.5px;line-height:1.6;padding-left:8px;border-left:2px solid #cdd9f5}
   .caRow .caSec{flex:1 1 360px;min-width:300px;border-top:0;border:1px solid var(--line);border-radius:10px;padding:9px;margin-top:0}
   @media(max-width:760px){ .daystrip{grid-template-columns:repeat(7,minmax(96px,1fr));overflow-x:auto} .caRow .caSec{flex:1 1 100%} }
   .day.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
@@ -368,18 +372,6 @@
 
   <!-- TAB: PHÂN BỔ NHÂN SỰ -->
   <section class="tab" id="tab-plan">
-    <div class="card" style="border:1.5px solid #bcdcff;background:#f6fbff">
-      <h2>📲 Cập nhật đơn thực tế đầu ngày</h2>
-      <p class="sub">Sáng sớm xem số đơn thực trên sàn (Shopee/Tiktok) rồi nhập vào đây kèm <b>% dự kiến tăng thêm</b> trong ngày. Phần mềm sẽ dùng số này (thay số dự kiến) để phân bổ người chuẩn hơn và cảnh báo nếu thiếu.</p>
-      <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
-        <div><label class="fld" style="margin:0 0 2px">Ngày</label><input id="do-date" type="date" style="max-width:150px"></div>
-        <div><label class="fld" style="margin:0 0 2px">Đơn thực tế (sàn)</label><input id="do-actual" type="number" min="0" oninput="updateDoPreview()" style="max-width:130px" placeholder="vd 605"></div>
-        <div><label class="fld" style="margin:0 0 2px">% tăng dự kiến</label><input id="do-uplift" type="number" min="0" oninput="updateDoPreview()" style="max-width:110px" placeholder="vd 20"></div>
-        <button class="btn" onclick="saveDayOrders()">Lưu &amp; phân bổ lại</button>
-        <span id="do-preview" class="hint" style="align-self:center;font-size:13px"></span>
-      </div>
-      <div id="do-list" style="margin-top:10px"></div>
-    </div>
     <div class="card">
       <h2>Phân bổ nhân sự &amp; cảnh báo</h2>
       <p class="sub">Bấm một ô ngày để xem chi tiết. Viền xanh = đủ người · vàng = thừa · đỏ = thiếu. Dùng ◀ ▶ để xem tuần khác.</p>
@@ -569,7 +561,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const BUILD = "v2026.06.10-71 (sửa quyền tài khoản qua modal; thanh tiêu đề chỉ hiện số version)"; // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "1.1"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-73 (Crabthing linh hoạt: người chạy đơn xong sớm phụ crab; crab giúp nhặt 30' đầu ca)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -865,7 +858,7 @@ function startApp(){
   document.getElementById('hdrRight').style.display='flex';
   if(CURACC&&S.accounts&&S.accounts[CURACC]){ const a=S.accounts[CURACC]; document.getElementById('roleChip').textContent='🙋 '+a.name; document.body.classList.toggle('viewonly',!a.canEdit); }
   else { document.getElementById('roleChip').textContent=role==='admin'?'👑 Quản lý (Admin)':'🙋 Nhân sự (User)'; document.body.classList.remove('viewonly'); }
-  {const bt=document.getElementById('buildTag'); if(bt)bt.textContent=BUILD.split(' ')[0];}
+  {const bt=document.getElementById('buildTag'); if(bt){bt.textContent='Phiên bản '+VERSION; bt.title='Phiên bản '+VERSION+' · '+BUILD;}}
   setConnBadge();
   setSaveStatus(cloudMode?'saved':'local');
   setupAutoSaveGuards();
@@ -1759,9 +1752,19 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
     cw.morePeople = cw.st==='thiếu'? Math.max(1,Math.ceil((cw.need-cw.capMain)/onePersonCa)) : 0;
   })();
   const chainDayCap=chCa('Sáng')+chCa('Chiều')+chCa('Tối');
-  return {selected,crabSel,rest,caStat,ordersCap:dayCap(),chainCap:chainDayCap,crabCap,crabD,trainEff,
-    crabShort:crabD>0&&crabCap<crabD-1e-6,
-    crabMore:Math.max(0,Math.ceil((crabD-crabCap)/(S.config.crabRate||30)))};
+  // (5b) CRAB linh hoạt: người CHẠY ĐƠN xong sớm (đội dư năng lực so với chỉ tiêu) nhảy sang phụ Crabthing,
+  //      thay vì cứng nhắc tách riêng người từ đầu ca. Quy đổi thời gian dôi ra của đội chạy đơn -> SKU.
+  let crabSpill=0;
+  if(crabD>0){ ['Sáng','Chiều'].forEach(ca=>{ const cs=caStat[ca]; if(!cs||!cs.members.length)return;
+    const capM=cs.capMain||0, need=cs.need||0; if(capM<=0)return;
+    let slack=1-need/capM; slack=Math.max(0,Math.min(0.5,slack)); // coi tối đa 50% thời gian ca là dôi ra (tránh ước quá lạc quan)
+    crabSpill += cs.members.length*perCa*slack*0.85; // 0.85 = hệ số ma sát khi chuyển sang việc khác
+  }); }
+  crabSpill=Math.round(crabSpill);
+  const crabCapEff=crabCap+crabSpill;
+  return {selected,crabSel,rest,caStat,ordersCap:dayCap(),chainCap:chainDayCap,crabCap:crabCapEff,crabCapDedi:crabCap,crabSpill,crabD,trainEff,
+    crabShort:crabD>0&&crabCapEff<crabD-1e-6,
+    crabMore:Math.max(0,Math.ceil((crabD-crabCapEff)/(S.config.crabRate||30)))};
 }
 // gộp 1 ngày
 function planDay(d, acc){
@@ -1803,7 +1806,7 @@ function planDay(d, acc){
   else kind='ok';
   return {ds,d,type:t,orders,crabD,sd,caStat:sd.caStat,summon,
     ord:{selected:sd.selected,status:ordStatus,cov,capacity:sd.ordersCap,capacityChain:sd.chainCap,capacityMain:dayCapMain},
-    crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap,boss:bossCrab},
+    crab:{selected:sd.crabSel,short:sd.crabShort,more:sd.crabMore,demand:crabD,cap:sd.crabCap,dedi:sd.crabCapDedi,spill:sd.crabSpill,boss:bossCrab},
     finalRest:sd.rest,kind};
 }
 // tính 1 tuần (dùng CHUNG cho cả xem Tuần và tổng quan Tháng để 2 nơi luôn khớp nhau)
@@ -1898,9 +1901,16 @@ function ordersComment(r, acc){
 function crabComment(r, acc){
   const crab=r.crab, ds=r.ds;
   if(crab.demand<=0)return '';
-  if(!crab.short)return `🟢 <b>Crabthing:</b> đủ — ${Math.round(crab.demand)} SKU, phân ${crab.selected.length} người${crab.selected.length?` (${crab.selected.map(p=>p.name).join(', ')})`:''}.`;
+  const spill=Math.round(crab.spill||0);
+  const helpNote=`<br><span class="hint">↻ Người Crabthing tận dụng 30' đầu mỗi ca nhảy vào nhặt đơn cùng team trước khi sang Crabthing.</span>`;
+  if(!crab.short){
+    const dedi=crab.selected.length;
+    const spillTxt = spill>0 ? `${dedi?` + đội chạy đơn xong sớm phụ ~${spill} SKU`:`<b>không cử người riêng</b> — đội chạy đơn xong sớm nhảy sang làm ~${spill} SKU`}` : '';
+    return `🟢 <b>Crabthing:</b> đủ — ${Math.round(crab.demand)} SKU. ${dedi?`Phân ${dedi} người (${crab.selected.map(p=>p.name).join(', ')})`:''}${spillTxt}.${helpNote}`;
+  }
   const cands=notRegistered(ds).sort((a,b)=>(acc[a.id]||0)-(acc[b.id]||0)).slice(0,crab.more);
-  return `🔴 <b>Crabthing:</b> THIẾU — cần ${Math.round(crab.demand)} SKU nhưng mới có ${Math.round(crab.cap)} (${crab.selected.length} người), cần thêm ~${crab.more} người. ${crab.selected.length===0?'<u>Chưa ai làm Crabthing</u> (người đăng ký đã dồn hết cho chạy đơn). ':''}${cands.length?`Gọi thêm: <b>${cands.map(c=>c.name).join(', ')}</b>.`:'Hết người — cần tuyển/tăng ca.'}`;
+  const spillTxt = spill>0 ? ` (gồm ~${spill} SKU do đội chạy đơn xong sớm phụ thêm)` : '';
+  return `🔴 <b>Crabthing:</b> THIẾU — cần ${Math.round(crab.demand)} SKU nhưng mới đáp ứng ~${Math.round(crab.cap)}${spillTxt}, cần thêm ~${crab.more} người. ${crab.selected.length===0&&spill===0?'<u>Chưa ai làm Crabthing</u> (người đăng ký đã dồn hết cho chạy đơn). ':''}${cands.length?`Gọi thêm: <b>${cands.map(c=>c.name).join(', ')}</b>.`:'Hết người — cần tuyển/tăng ca.'}${helpNote}`;
 }
 function buildDaySug(r, acc){
   if(r.type==='closed')return 'Kho đóng cửa (Chủ nhật/ngày nghỉ) — đơn dồn sang ngày làm kế tiếp.';
@@ -2247,6 +2257,24 @@ function wavePlaybook(cs,ca){
     const seq=b.map(s=>`${stMain[s.k]===p.id?'★':'↗'}${stN(s.k)} <span class="wt">${clk(s.from)}–${clk(s.to)}</span><span style="color:#0f6e56;font-weight:600">${Math.round(s.ord||0)}đ</span>`).join(' → ');
     return `<div class="wstep" style="margin:2px 0">${p.boss?'👑 ':''}<b>${esc(p.name)}:</b> ${seq}</div>`;
   }).filter(Boolean).join('');
+  // ===== Mô tả theo CÁCH ĐIỀU PHỐI (đọc là hiểu quy trình) =====
+  const nm=id=>{const p=mem.find(x=>x.id===id);return p?((p.boss?'👑 ':'')+esc(p.name)):'';};
+  const skOf=(id,k)=>{const p=mem.find(x=>x.id===id);return p?Math.round(p.skills[k]||0):0;};
+  const stageInfo={};
+  ORDER.forEach(k=>{ let from=Infinity,to=0,ord=0,ppl=new Set();
+    mem.forEach(p=>{(sim.blocks[p.id]||[]).forEach(x=>{ if(x.k===k){from=Math.min(from,x.from);to=Math.max(to,x.to);ord+=x.ord||0;ppl.add(p.id);} });});
+    if(from<Infinity)stageInfo[k]={from,to,ord:Math.round(ord),n:ppl.size,main:stMain[k]}; });
+  let bi=1; const steps=[];
+  const xi=stageInfo['xacnhan'];
+  if(xi){ const dur=Math.max(1,Math.round(xi.to-xi.from)); const rr=Math.round(xi.ord/(dur/60)); const per100=xi.ord>0?(dur/xi.ord*100):0;
+    steps.push(`<div class="cstep"><b>Bước ${bi++} — 🖥️ Xác nhận đơn (1 người · 1 máy):</b> ${nm(xi.main)} mở ca lúc ${clk(xi.from)}, xác nhận <b>${xi.ord} đơn</b> trong ~${dur}'${rr?` (~${rr} đơn/h`:' ('}${per100?`, ≈ ${per100.toFixed(1)}' mỗi 100 đơn`:''}). Chung 1 máy nên chỉ 1 người làm; người phụ chỉ vào <i>thay</i> khi người trước xong, không làm song song.</div>`); }
+  const ni=stageInfo['nhat'];
+  if(ni){ steps.push(`<div class="cstep"><b>Bước ${bi++} — 📦 Cả team dồn Nhặt:</b> Từ ${clk(ni.from)}, <b>${ni.n} người</b> cùng nhặt cho đơn chảy nhanh, tạo đệm cho dây chuyền. <b>${nm(ni.main)}</b> nhặt khoẻ nhất (${skOf(ni.main,'nhat')} đơn/h) nên <b>làm chính</b> giữ nhịp; khi đủ đệm, người khác lần lượt tách sang khâu sau.</div>`); }
+  const casLines=WORK.filter(k=>k!=='nhat').map(k=>{ const si=stageInfo[k]; if(!si)return ''; const isBn=k===bnK;
+    return `<div class="cstep"><b>Bước ${bi++} — ${stIcon[k]||''} ${stN(k)}${isBn?' 🔴 nút thắt':''}:</b> mở lúc ${clk(si.from)}; <b>${nm(si.main)}</b> chủ trì (giỏi ${stN(k)} nhất — ${skOf(si.main,k)} đơn/h)${isBn?', <b>neo suốt</b> vì đây là điểm chậm nhất — người mạnh khác xong khâu trước dồn xuống phụ':', ai rảnh ghé phụ thêm'}. ~${si.ord} đơn.</div>`; }).filter(Boolean).join('');
+  const whyTxt=`<div class="cstep" style="border-color:#f3c98a;background:#fffaf0"><b>➡️ Vì sao phân vai vậy?</b> Mỗi khâu đặt đúng <b>1 người làm chính = người có skill cao nhất khâu đó</b> (theo bảng kỹ năng) để khâu chạy nhanh nhất; người giỏi được "neo" đúng sở trường, ai xong sớm xuống phụ khâu nghẽn (<b>${stN(bnK)}</b>). 👑 Bà Chúa Kho chỉ vào khi thiếu người.</div>`;
+  const crabNote=(S.demand&&S.demand.crabSku>0)?`<div class="cstep" style="border-color:#e8a; background:#fff5f8">🦀 <b>Crabthing linh hoạt:</b> ai chạy đơn <b>xong sớm</b> mà Crabthing đang thiếu thì nhảy sang phụ (không cứng nhắc tách riêng 1 người từ đầu). Ngược lại, người Crabthing dùng <b>30' đầu ca</b> nhặt đơn cùng team trước khi sang Crabthing.</div>`:'';
+  const coordTxt=steps.join('')+casLines+whyTxt+crabNote;
   const gapLines=WORK.map(k=>gapWarn(k)?`<div class="wstep">${stIcon[k]} <b>${stN(k)}:</b>${gapWarn(k)}</div>`:'').join('');
   const gap=Math.max(0,need-cap);
   const adv = overCa ? staffingNote(cs) : '';
@@ -2257,7 +2285,8 @@ function wavePlaybook(cs,ca){
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
     `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút, số đơn trên từng khối:</div>`+
     gantt+ gapLines+
-    `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand)">▸ Mô tả bằng chữ (giờ từng người)</summary>${rowsTxt}</details>`+
+    `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand);font-weight:700">▸ Cách điều phối người (đọc là hiểu quy trình)</summary>${coordTxt}`+
+      `<details style="margin-top:6px"><summary style="font-size:12px;cursor:pointer;color:var(--muted)">▸ Giờ chi tiết từng người</summary>${rowsTxt}</details></details>`+
     `<div class="wnote">⚙️ Đầu ca Bà Chúa Kho xác nhận, rồi cả team dồn <b>Nhặt</b> và lần lượt quét sang Kiểm → Bọc → Gói hộp; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. ${finishLine} <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
     adv+
     `</div>`;
@@ -2401,6 +2430,7 @@ function renderWeekView(){
       <div class="metric"><span class="pill">${r.d.getDate()}/${r.d.getMonth()+1}</span> · <span class="badge ${sb}">${st}</span></div>
       <div class="metric">Đơn ST: <b>${Math.round(r.orders)}</b>${(()=>{const rl=rolledOrders(r.d);return rl>0.5?` <span class="pill" style="color:var(--brand)">+${Math.round(rl)} dồn</span>`:'';})()} · Chạy đơn <b>${realSel}</b> người${bossIn?' <span class="pill" style="color:#b8860b" title="Bà Chúa Kho được triệu hồi, ngoài người đăng ký">+👑</span>':''} · đăng ký <b>${totalReg}</b></div>
       ${r.summon?`<div class="bosscall">👑✨ <b>TRIỆU HỒI BÀ CHÚA KHO!</b> ✨👑<br><span class="bc-sub">Xuất trận cân team — ${esc(r.summon)}</span></div>`:''}
+      ${r.type!=='closed'?dayActualForm(r):''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       <div class="caRow">${caSection}</div>
       ${stagesHtml}
@@ -2503,15 +2533,24 @@ function renderAll(){
   fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();renderAccounts();
   populateUserStaff();renderReg();updateNavBadge();
 }
-// ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY =====
-function updateDoPreview(){ const a=Math.max(0,+((document.getElementById('do-actual')||{}).value)||0); const u=Math.max(0,+((document.getElementById('do-uplift')||{}).value)||0); const p=document.getElementById('do-preview'); if(p)p.innerHTML=a>0?`→ ước <b style="color:#1d6fe0">${Math.round(a*(1+u/100))}</b> đơn cho cả ngày`:''; }
-function saveDayOrders(){ const ds=(document.getElementById('do-date')||{}).value; const a=Math.max(0,+((document.getElementById('do-actual')||{}).value)||0); const u=Math.max(0,+((document.getElementById('do-uplift')||{}).value)||0); if(!ds||a<=0){alert('Hãy chọn ngày và nhập số đơn thực tế (>0).');return;} S.dayOrders=S.dayOrders||{}; S.dayOrders[ds]={actual:a,uplift:u}; saveAll(); renderDayOrders(); renderAll(); }
-function clearDayOrders(ds){ if(S.dayOrders)delete S.dayOrders[ds]; saveAll(); renderDayOrders(); renderAll(); }
-function renderDayOrders(){ const dd=document.getElementById('do-date'); if(dd&&!dd.value)dd.value=fmt(new Date()); updateDoPreview();
-  const list=document.getElementById('do-list'); if(!list)return; const wd=['CN','T2','T3','T4','T5','T6','T7'];
-  const keys=Object.keys(S.dayOrders||{}).filter(k=>(+((S.dayOrders[k]||{}).actual))>0).sort();
-  list.innerHTML = keys.length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:3px">Ngày đã chốt số thực tế (ghi đè dự kiến):</div>`+keys.map(ds=>{const o=S.dayOrders[ds];const est=dayEstimate(ds);let lb=ds.slice(5);try{const dt=parse(ds);lb=wd[dt.getDay()]+' '+ds.slice(5);}catch(e){}return `<span style="display:inline-flex;align-items:center;gap:5px;margin:2px 4px 2px 0;padding:3px 8px;border-radius:7px;background:#e7f0ff;font-size:12px">${lb}: <b>${o.actual}đ</b> +${o.uplift||0}% → <b style="color:#1d6fe0">${est}</b> <span onclick="clearDayOrders('${ds}')" title="Xoá, quay lại số dự kiến" style="cursor:pointer;color:#c0392b;font-weight:700">✕</span></span>`;}).join('') : `<span class="hint">Chưa chốt ngày nào — đang dùng số dự kiến theo tháng.</span>`;
+// ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY (gắn trong chi tiết từng ngày) =====
+function dayActualForm(r){
+  const ds=fmt(r.d); const o=(S.dayOrders||{})[ds]||{};
+  const a=(o.actual!=null&&o.actual!=='')?o.actual:''; const u=(o.uplift!=null&&o.uplift!=='')?o.uplift:'';
+  const has=(+o.actual)>0;
+  return `<div class="daform">
+    <div class="daform-h">📲 Cập nhật đơn thực tế đầu ngày${has?` <span class="pill" style="color:var(--brand)">đang dùng ${dayEstimate(ds)} đơn</span>`:''}</div>
+    <div class="daform-row">
+      <div><label class="fld" style="margin:0 0 2px">Đơn thực tế</label><input id="da-actual-${ds}" type="number" min="0" value="${a}" style="max-width:120px" placeholder="vd 605"></div>
+      <div><label class="fld" style="margin:0 0 2px">% tăng dự kiến</label><input id="da-uplift-${ds}" type="number" min="0" value="${u}" style="max-width:120px" placeholder="vd 20"></div>
+      <button class="btn sm" onclick="saveDayActual('${ds}')">Lưu</button>
+      ${has?`<button class="btn ghost sm" onclick="clearDayOrders('${ds}')">Xoá</button>`:''}
+    </div>
+  </div>`;
 }
+function saveDayActual(ds){ const a=Math.max(0,+((document.getElementById('da-actual-'+ds)||{}).value)||0); const u=Math.max(0,+((document.getElementById('da-uplift-'+ds)||{}).value)||0); if(a<=0){alert('Nhập số đơn thực tế (>0).');return;} S.dayOrders=S.dayOrders||{}; S.dayOrders[ds]={actual:a,uplift:u}; saveAll(); renderAll(); }
+function clearDayOrders(ds){ if(S.dayOrders)delete S.dayOrders[ds]; saveAll(); renderAll(); }
+function renderDayOrders(){}
 // nạp dữ liệu cloud (nếu có) rồi mở app
 (async function boot(){
   await initCloud();
