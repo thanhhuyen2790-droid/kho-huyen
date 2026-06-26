@@ -66,6 +66,8 @@
   .daform-h{font-weight:700;font-size:13px;color:#1d4e89;margin-bottom:6px}
   .daform-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
   .cstep{margin:5px 0;font-size:12.5px;line-height:1.6;padding-left:8px;border-left:2px solid #cdd9f5}
+  .onbadge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;background:#eafaf0;border:1px solid #bfe6cf;font-size:12.5px}
+  .ondot{width:8px;height:8px;border-radius:50%;background:#27c06a;box-shadow:0 0 0 3px rgba(39,192,106,.2);flex:none}
   .caRow .caSec{flex:1 1 360px;min-width:300px;border-top:0;border:1px solid var(--line);border-radius:10px;padding:9px;margin-top:0}
   @media(max-width:760px){ .daystrip{grid-template-columns:repeat(7,minmax(96px,1fr));overflow-x:auto} .caRow .caSec{flex:1 1 100%} }
   .day.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
@@ -405,6 +407,14 @@
   <!-- TAB: TÀI KHOẢN -->
   <section class="tab" id="tab-accounts">
     <div class="card">
+      <h2>🟢 Đang online &amp; lịch sử đăng nhập</h2>
+      <p class="sub">Ai đang mở app ngay bây giờ — tự cập nhật, thoát ra/đóng tab khoảng 30 giây sẽ tự mất. Bên dưới là lịch sử các lượt đăng nhập gần đây.</p>
+      <div style="font-weight:600;margin-bottom:6px">Đang online</div>
+      <div id="ac-online"></div>
+      <div style="font-weight:600;margin:16px 0 6px">Lịch sử đăng nhập gần đây</div>
+      <div id="ac-history"></div>
+    </div>
+    <div class="card">
       <h2>👤 Tài khoản nhân sự</h2>
       <p class="sub">Tạo tài khoản riêng cho từng nhân sự: chọn người có sẵn hoặc tự nhập tên → phần mềm tự sinh <b>mật khẩu 6 số</b> + <b>link đăng nhập riêng</b> (đã sẵn tên) để bạn gửi. Tích chọn họ được xem gì. Mỗi mật khẩu chỉ đăng nhập 1 thiết bị. Xoá tài khoản khi nghỉ việc.</p>
       <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
@@ -561,8 +571,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "1.2"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-74 (mô tả điều phối khớp biểu đồ từng thời điểm: ai mở khâu, khi nào người chính vào, ai phụ)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "1.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-75 (trạng thái ai đang online realtime + lịch sử đăng nhập trong tab Tài khoản)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -825,6 +835,40 @@ function setupAutoSaveGuards(){
 /* ---------- AUTH ---------- */
 const PW={admin:'140816',user:'123456'};
 let role=null, loginRole='admin', LOGIN_ACC=null;
+/* ---- TRẠNG THÁI ONLINE (Supabase Realtime Presence) + LỊCH SỬ ĐĂNG NHẬP ---- */
+let presChan=null, ONLINE={}, presTick=null;
+function presenceMeta(){ let name,rl;
+  if(CURACC&&S.accounts&&S.accounts[CURACC]){ name=S.accounts[CURACC].name; rl='user'; }
+  else { name=role==='admin'?'Quản lý (Admin)':'Nhân sự (User)'; rl=role; }
+  return {name,role:rl,isAdmin:role==='admin',since:Date.now(),cid:CLIENT_ID}; }
+function startPresence(){
+  if(!cloudMode||!sb||!sb.channel)return;
+  try{ if(presChan)sb.removeChannel(presChan); }catch(e){}
+  const me=presenceMeta();
+  presChan=sb.channel('kho_presence',{config:{presence:{key:CLIENT_ID}}});
+  presChan.on('presence',{event:'sync'},()=>{ ONLINE=presChan.presenceState(); renderOnline(); })
+          .on('presence',{event:'join'},()=>{ ONLINE=presChan.presenceState(); renderOnline(); })
+          .on('presence',{event:'leave'},()=>{ ONLINE=presChan.presenceState(); renderOnline(); })
+          .subscribe(async st=>{ if(st==='SUBSCRIBED'){ try{await presChan.track(me);}catch(e){} } });
+  clearInterval(presTick); presTick=setInterval(renderOnline,60000); // cập nhật "đã online bao lâu"
+}
+function stopPresence(){ try{ if(presChan){presChan.untrack&&presChan.untrack(); sb.removeChannel(presChan);} }catch(e){} presChan=null; ONLINE={}; clearInterval(presTick); }
+function onlineList(){ const out=[],seen={}; Object.values(ONLINE||{}).forEach(arr=>{ if(arr&&arr[0]){const r=arr[0]; if(!seen[r.cid]){seen[r.cid]=1; out.push(r);}} });
+  return out.sort((a,b)=>((b.isAdmin?1:0)-(a.isAdmin?1:0))||((a.since||0)-(b.since||0))); }
+function renderOnline(){ const el=document.getElementById('ac-online'); if(!el)return;
+  const u=onlineList();
+  el.innerHTML = u.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">`+u.map(r=>{
+    const mins=Math.max(0,Math.round((Date.now()-(r.since||Date.now()))/60000));
+    const dur=mins<1?'vừa vào':(mins<60?`${mins} phút`:`${Math.floor(mins/60)}h${mins%60?(mins%60)+'p':''}`);
+    const t=new Date(r.since||Date.now()).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+    return `<span class="onbadge"><span class="ondot"></span><b>${esc(r.name)}</b> <span class="hint">· ${r.isAdmin?'Admin':'User'} · vào ${t} (${dur})</span></span>`;
+  }).join('')+`</div>` : `<span class="hint">${cloudMode?'Hiện chưa thấy ai online.':'Cần kết nối cloud để xem trạng thái online.'}</span>`;
+}
+function renderHistory(){ const el=document.getElementById('ac-history'); if(!el)return;
+  const log=(S.loginLog||[]).slice(-50).reverse();
+  el.innerHTML = log.length ? `<table class="catbl"><thead><tr><th>Thời điểm</th><th>Tài khoản</th><th>Vai trò</th></tr></thead><tbody>`+log.map(e=>`<tr><td style="font-size:12px">${new Date(e.t).toLocaleString('vi-VN')}</td><td><b>${esc(e.name)}</b></td><td>${e.role==='admin'?'Admin':'User'}</td></tr>`).join('')+`</tbody></table>` : `<span class="hint">Chưa ghi lượt đăng nhập nào.</span>`;
+}
+function logLogin(name,rl){ S.loginLog=S.loginLog||[]; S.loginLog.push({name,role:rl,t:Date.now()}); if(S.loginLog.length>50)S.loginLog=S.loginLog.slice(-50); }
 function pickRole(r){
   loginRole=r;
   document.getElementById('role-admin').classList.toggle('on',r==='admin');
@@ -841,12 +885,13 @@ function doLogin(){
     if(a.device&&a.device!==dev){err.textContent='Mật khẩu này đã đăng nhập trên thiết bị khác. Liên hệ quản lý để reset thiết bị.';return;}
     a.device=a.device||dev; a.lastLogin=Date.now(); CURACC=LOGIN_ACC; role='user';
     try{sessionStorage.setItem('khoRole','user');sessionStorage.setItem('khoAcc',LOGIN_ACC);}catch(e){}
-    saveAll(); startApp(); return;
+    logLogin(a.name,'user'); saveAll(); startApp(); return;
   }
-  if(pw===PW[loginRole]){role=loginRole;CURACC=null;try{sessionStorage.setItem('khoRole',role);sessionStorage.removeItem('khoAcc')}catch(e){}startApp();}
+  if(pw===PW[loginRole]){role=loginRole;CURACC=null;try{sessionStorage.setItem('khoRole',role);sessionStorage.removeItem('khoAcc')}catch(e){}logLogin(role==='admin'?'Quản lý (Admin)':'Nhân sự (User)',role);saveAll();startApp();}
   else err.textContent='Sai mật khẩu, thử lại.';
 }
 function logout(){
+  stopPresence();
   role=null;try{sessionStorage.removeItem('khoRole')}catch(e){}
   document.getElementById('pw').value='';
   document.getElementById('overlay').style.display='flex';
@@ -862,6 +907,7 @@ function startApp(){
   setConnBadge();
   setSaveStatus(cloudMode?'saved':'local');
   setupAutoSaveGuards();
+  startPresence();
   buildNav();renderAll();
   const vts=visibleTabs(); const first=CURACC?(vts[0]&&vts[0][0]):(role==='admin'?'plan':'reg');
   const btn=first?document.querySelector('#nav button[data-t="'+first+'"]'):null;
@@ -900,6 +946,7 @@ function resetDevice(id){ if(S.accounts&&S.accounts[id]){ S.accounts[id].device=
 function renderAccounts(){
   const sel=document.getElementById('ac-staff'); if(sel)sel.innerHTML='<option value="">— chọn người có sẵn —</option>'+S.staff.filter(s=>s.active).map((s,i)=>`<option value="${s.id||('s'+i)}">${esc(s.name)}</option>`).join('');
   const pc=document.getElementById('ac-perms'); if(pc&&pc.dataset.init!=='1'){ pc.innerHTML=PERM_TABS.map(t=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer"><input type="checkbox" class="ac-perm" value="${t[0]}" ${(t[0]==='plan'||t[0]==='reg')?'checked':''}>${t[1]}</label>`).join(''); pc.dataset.init='1'; }
+  renderOnline(); renderHistory();
   const list=document.getElementById('ac-list'); if(!list)return; const ids=Object.keys(S.accounts||{});
   list.innerHTML = ids.length ? `<table class="catbl" style="table-layout:auto"><thead><tr><th>Nhân sự</th><th>Mật khẩu</th><th>Quyền xem</th><th>Thiết bị</th><th>Đăng nhập gần nhất</th><th></th></tr></thead><tbody>`+ids.map(id=>{const a=S.accounts[id];const link=accLoginLink(id);const permTxt=(a.perms||[]).map(k=>{const t=PERM_TABS.find(x=>x[0]===k);return t?t[1]:k;}).join(', ')||'—';return `<tr><td><b>${esc(a.name)}</b></td><td><code style="font-size:14px;letter-spacing:1px">${a.pass}</code></td><td style="font-size:11px">${permTxt}${a.canEdit?' <span class="pill" style="color:#0f6e56">được sửa</span>':''}</td><td>${a.device?'<span style="color:#0f6e56">đã gắn</span>':'<span class="hint">chưa</span>'}</td><td style="font-size:11px">${a.lastLogin?new Date(a.lastLogin).toLocaleString('vi-VN'):'—'}</td><td style="white-space:nowrap"><button class="btn ghost sm" onclick="editAccountPerms('${id}')">✏️ Quyền</button> <button class="btn ghost sm" onclick="copyText('${link}\\nMật khẩu: ${a.pass}',this)">📋 Copy</button> ${a.device?`<button class="btn ghost sm" onclick="resetDevice('${id}')">Reset máy</button>`:''} <button class="btn danger sm" onclick="delAccount('${id}')">Xoá</button></td></tr>`;}).join('')+`</tbody></table>` : `<span class="hint">Chưa có tài khoản nào. Tạo ở trên rồi gửi link + mật khẩu cho nhân sự.</span>`;
 }
