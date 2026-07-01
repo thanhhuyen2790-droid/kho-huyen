@@ -438,6 +438,19 @@
     </div>
   </section>
 
+  <!-- TAB: ĐÁNH GIÁ & ĐÀO TẠO -->
+  <section class="tab" id="tab-evalu">
+    <div class="card">
+      <h2>📈 Đánh giá nhân sự theo KPI &amp; hướng đào tạo</h2>
+      <p class="sub">So tốc độ thực tế từng người với <b>chuẩn từng khâu</b> để biết ai đạt, ai cần kèm, và <b>đào tạo ai vào khâu nào</b>. Dữ liệu lấy từ bảng Nhân sự (đơn/h mỗi khâu).</p>
+      <div class="toolbar" style="align-items:flex-end;gap:14px;flex-wrap:wrap">
+        <div><label class="fld" style="margin:0 0 2px">KPI mục tiêu (đơn/h/người, trọn gói)</label><input id="ev-kpi" type="number" min="1" style="max-width:120px" onchange="S.config.kpiPerHour=Math.max(1,+this.value||25);saveAll();renderEval()"></div>
+        <div><label class="fld" style="margin:0 0 2px">Ngưỡng "thạo" (% so chuẩn khâu)</label><input id="ev-thr" type="number" min="30" max="100" step="5" style="max-width:110px" onchange="S.config.skillPass=Math.max(30,Math.min(100,+this.value||80));saveAll();renderEval()"></div>
+      </div>
+      <div id="evalBody" style="margin-top:12px"></div>
+    </div>
+  </section>
+
   <!-- TAB: CÀI ĐẶT (gồm Tài khoản) — CHỈ ADMIN xem & sửa -->
   <section class="tab" id="tab-config">
     <div class="card">
@@ -603,8 +616,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "1.9"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-81 (nút Vì sao/Phân tích tự động trong kịch bản; chế độ Phân tay ghim khâu từng người + so sánh đơn với bản tự động)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.0"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-83 (Phase 1: tab Đánh giá & Đào tạo; so sánh Chuẩn vs Thực tế trong kịch bản — chênh năng lực/giờ xong + khâu cần đào tạo)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -633,7 +646,7 @@ function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>
 
 function defaultState(){
   return {
-    config:{prod:20,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5,fatigueOn:true,fatiguePct:4.5,caStartSang:'07:30',caStartChieu:'13:30'},
+    config:{prod:20,kpiPerHour:25,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5,fatigueOn:true,fatiguePct:4.5,caStartSang:'07:30',caStartChieu:'13:30'},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -1019,6 +1032,7 @@ const ALL_TABS=[
   ['staff','👥 Nhân sự','admin'],
   ['reg','🗓️ Đăng ký lịch','both'],
   ['approve','✅ Phê duyệt','admin'],
+  ['evalu','📈 Đánh giá & Đào tạo','admin'],
   ['config','🛠️ Cài đặt','admin'],
 ];
 // các tính năng (tab) có thể cấp quyền xem cho tài khoản nhân sự — KHÔNG có Cài đặt (chỉ admin)
@@ -1050,6 +1064,7 @@ function go(t,btn){
   if(t==='approve')renderApprove();
   if(t==='demand')renderDemand();
   if(t==='config'){renderAccounts();renderBackups();}
+  if(t==='evalu')renderEval();
   if(t==='staff'){renderSkillMatrix();renderAttendance();}
 }
 
@@ -2523,6 +2538,17 @@ function wavePlaybook(cs,ca,ds){
     `<div class="wy"><b>3) Ai đứng chờ (khoảng trắng) & vì sao:</b>${gapWhy.length?gapWhy.join(''):' <span style="color:#0f6e56">Không ai trắng đáng kể.</span>'}</div>`+
     `<div class="wy"><b>4) Nên làm gì?</b>${recos.map(r=>'<div style="margin-top:2px">• '+r+'</div>').join('')}</div>`+
   `</div>`;
+  // ===== 📊 CHUẨN vs THỰC TẾ: cái giá của tay nghề chưa tới =====
+  const memStd=mem.map(p=>{const sk={};S.stages.forEach(s=>{sk[s.key]=(p.skills[s.key]||0)>0?s.rate:0;});return Object.assign({},p,{skills:sk});});
+  const capStd=Math.round(pipelineThroughput(memStd).cap);
+  const mkStd=simWave(memStd,chartN,null,crabPool).makespan;
+  const stageGap=S.stages.filter(s=>s.key!=='xacnhan').map(s=>{const a=mem.reduce((x,p)=>x+(p.skills[s.key]||0),0);const b=memStd.reduce((x,p)=>x+(p.skills[s.key]||0),0);return {s,ratio:b>0?a/b:1};}).filter(x=>x.ratio<0.999).sort((a,b)=>a.ratio-b.ratio);
+  const worst=stageGap[0];
+  const svaHTML=`<div class="whybox">`+
+    `<div class="wy"><b>Năng lực:</b> hiện tại <b>${cap}</b> đơn/ca · nếu cả team đạt chuẩn <b>${capStd}</b> đơn/ca → chênh <b style="color:#c0392b">${Math.max(0,capStd-cap)} đơn</b> là do tay nghề chưa tới.</div>`+
+    `<div class="wy"><b>Giờ xong ${chartN} đơn:</b> hiện tại ~<b>${clk(mk)}</b> · nếu đạt chuẩn ~<b>${clk(mkStd)}</b> → ${mk>mkStd?`<b style="color:#0f6e56">sớm hơn ${mk-mkStd} phút</b> (đỡ phải OT)`:'≈ ngang nhau'}.</div>`+
+    (worst?`<div class="wy"><b>Khâu tổn thất nhiều nhất do kỹ năng yếu:</b> <b>${stN(worst.s.key)}</b> — team chỉ đạt ~${Math.round(worst.ratio*100)}% so chuẩn → <b>ưu tiên đào tạo khâu này</b>. Ai cần học xem tab 📈 <b>Đánh giá &amp; Đào tạo</b>.</div>`:'')+
+  `</div>`;
   // ===== ✋ PHÂN TAY: ghim khâu chính từng người =====
   const pinNow=pinsRaw||{};
   const pinRows=mem.filter(p=>!p.boss).map(p=>{ const opts=['<option value="">Tự động</option>'].concat(ORDER.filter(k=>(p.skills[k]||0)>0).map(k=>`<option value="${k}" ${pinNow[p.id]===k?'selected':''}>${stN(k)}</option>`)).join('');
@@ -2532,6 +2558,7 @@ function wavePlaybook(cs,ca,ds){
   return `<div class="waveFull">`+
     pinCmp+
     `<details class="whysec" open><summary>🔍 Vì sao kịch bản thế này? — phân tích tự động</summary>${whyPanel}</details>`+
+    `<details class="whysec"><summary>📊 Chuẩn vs Thực tế — cái giá của tay nghề</summary>${svaHTML}</details>`+
     `<details class="pinsec"${usePins?' open':''}><summary>✋ Phân tay — tự ghim người vào khâu</summary>${pinPanel}</details>`+
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
     `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút, số đơn trên từng khối:</div>`+
@@ -2779,6 +2806,49 @@ function renderPlan(){
   renderWeekView();
 }
 
+/* ---------- ĐÁNH GIÁ NHÂN SỰ & ĐÀO TẠO ---------- */
+function renderEval(){
+  const body=document.getElementById('evalBody'); if(!body)return;
+  const kpi=S.config.kpiPerHour||25; const pass=(S.config.skillPass||80)/100;
+  const kk=document.getElementById('ev-kpi'); if(kk&&!kk.value)kk.value=kpi;
+  const tt=document.getElementById('ev-thr'); if(tt&&!tt.value)tt.value=Math.round(pass*100);
+  const act=S.staff.filter(s=>s.active&&!s.boss);
+  if(!act.length){body.innerHTML='<span class="hint">Chưa có nhân sự.</span>';return;}
+  const stages=S.stages;
+  const core=stages.filter(s=>s.key!=='xacnhan'); // khâu tay nghề (bỏ Xác nhận vì là bấm máy, ai cũng nhanh)
+  const bnStages=stages.slice().sort((a,b)=>a.rate-b.rate).slice(0,2).map(s=>s.key); // 2 khâu chậm nhất = nút thắt
+  const pctOf=(p,k)=>{const r=p.skills[k]||0;const b=benchmark(k)||1;return r/b;};
+  const strongestAt=k=>{let best=null,bv=-1;act.forEach(p=>{const r=p.skills[k]||0;if(r>bv){bv=r;best=p;}});return best;};
+  // 1) Độ phủ kỹ năng của kho theo khâu
+  const cov=stages.map(s=>{const good=act.filter(p=>pctOf(p,s.key)>=pass&&(p.skills[s.key]||0)>0);const isBn=bnStages.includes(s.key);const thin=good.length<2;return {s,good,thin,isBn};});
+  const covHtml=`<h3 style="font-size:15px;margin:6px 0 4px">1) Độ phủ kỹ năng của kho — ai làm được khâu nào (≥${Math.round(pass*100)}% chuẩn)</h3>`+
+    `<div class="schedgrid"><table class="catbl"><thead><tr><th>Khâu</th><th>Chuẩn đơn/h</th><th>Số người thạo</th><th>Người thạo</th><th>Tình trạng</th></tr></thead><tbody>`+
+    cov.map(c=>`<tr><td><b>${esc(c.s.name)}</b>${c.isBn?' 🔴':''}</td><td style="text-align:center">${c.s.rate}</td><td style="text-align:center;font-weight:700;color:${c.thin?'#c0392b':'#0f6e56'}">${c.good.length}</td><td style="font-size:11px">${c.good.map(p=>esc(p.name)).join(', ')||'<span style="color:#c0392b">— chưa ai —</span>'}</td><td style="font-size:11px">${c.thin?`<span style="color:#c0392b">⚠️ MỎNG${c.isBn?' (nút thắt!)':''} — ưu tiên đào tạo</span>`:'<span style="color:#0f6e56">Ổn</span>'}</td></tr>`).join('')+
+    `</tbody></table></div>`;
+  // 2) Chấm điểm & hướng đào tạo từng người
+  const rows=act.map(p=>{
+    const doneStages=core.filter(s=>(p.skills[s.key]||0)>0);
+    const thao=core.filter(s=>pctOf(p,s.key)>=pass);
+    const avg=doneStages.length?Math.round(doneStages.reduce((a,s)=>a+pctOf(p,s.key),0)/doneStages.length*100):0;
+    let train=bnStages.find(k=>pctOf(p,k)<pass);
+    if(!train){const below=core.filter(s=>pctOf(p,s.key)<pass).sort((a,b)=>pctOf(p,a.key)-pctOf(p,b.key));train=below.length?below[0].key:null;}
+    const mentorP=train?strongestAt(train):null; const mentor=(mentorP&&mentorP.id!==p.id&&pctOf(mentorP,train)>=pass)?mentorP:null;
+    const rank=thao.length>=5?['⭐ Đa năng','#0f6e56']:(thao.length>=3?['Đạt','#1d6fe0']:['Cần kèm','#c0392b']);
+    const cells=stages.map(s=>{const r=p.skills[s.key]||0;const pc=pctOf(p,s.key);const bg=r<=0?'#f1f1f1':(pc>=pass?'#e6f7ee':(pc>=0.5?'#fff4e0':'#fdecea'));const col=r<=0?'#999':(pc>=pass?'#0f6e56':(pc>=0.5?'#8a6500':'#c0392b'));return `<td style="text-align:center;background:${bg};color:${col};font-weight:600;font-size:11px" title="${esc(s.name)}: ${Math.round(pc*100)}% chuẩn">${r>0?r:'–'}</td>`;}).join('');
+    return `<tr><td style="white-space:nowrap;font-weight:600">${esc(p.name)} <small class="hint">${p.type}</small></td>${cells}<td style="text-align:center;font-weight:700">${thao.length}</td><td style="text-align:center">${avg}%</td><td style="font-size:11px">${train?`<b>${stageName(train)}</b>${mentor?` <span class="hint">← kèm: ${esc(mentor.name)}</span>`:''}`:'<span style="color:#0f6e56">— đủ —</span>'}</td><td style="text-align:center"><span class="pill" style="background:${rank[1]}22;color:${rank[1]};font-weight:700">${rank[0]}</span></td></tr>`;
+  }).join('');
+  const head=`<tr><th>Nhân sự</th>${stages.map(s=>`<th style="font-size:10px" title="${esc(s.name)}">${esc(STAGE_COLOR[s.key]?STAGE_COLOR[s.key][1]:s.name)}</th>`).join('')}<th>Thạo</th><th>Điểm TB</th><th>Cần đào tạo → kèm</th><th>Xếp loại</th></tr>`;
+  const scoreHtml=`<h3 style="font-size:15px;margin:16px 0 4px">2) Chấm điểm &amp; hướng đào tạo từng người</h3>`+
+    `<p class="sub">Ô khâu: số = đơn/h thực · <span style="color:#0f6e56">xanh</span>=đạt ≥${Math.round(pass*100)}% chuẩn · <span style="color:#8a6500">vàng</span>=50–${Math.round(pass*100)}% · <span style="color:#c0392b">đỏ</span>=&lt;50% · xám=chưa làm được. "Thạo" = số khâu tay nghề đạt chuẩn (bỏ Xác nhận).</p>`+
+    `<div class="schedgrid"><table class="catbl">${head}<tbody>${rows}</tbody></table></div>`;
+  // 3) KPI trọn gói của team
+  const teamAvg={}; core.forEach(s=>{const rs=act.map(p=>p.skills[s.key]||0).filter(x=>x>0);teamAvg[s.key]=rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0;});
+  const teamTrongoi = core.every(s=>teamAvg[s.key]>0)? Math.round(1/core.reduce((a,s)=>a+1/teamAvg[s.key],0)) : null;
+  const ok=teamTrongoi!=null&&teamTrongoi>=kpi;
+  const kpiNote=`<h3 style="font-size:15px;margin:16px 0 4px">3) Năng suất trọn gói của team vs KPI</h3>`+
+    `<div class="sug ${ok?'ok':'warn'}">Tốc độ trọn gói TB của team ước ~<b>${teamTrongoi!=null?teamTrongoi:'—'}</b> đơn/h · KPI mục tiêu <b>${kpi}</b> đơn/h → ${teamTrongoi!=null?(ok?'<b style="color:#0f6e56">ĐẠT</b>':`đang đạt <b>${Math.round(teamTrongoi/kpi*100)}%</b> KPI (còn thiếu ~${kpi-teamTrongoi} đơn/h)`):'chưa đủ dữ liệu — còn khâu chưa ai làm được'}. <div class="hint" style="margin-top:4px">Khi mọi khâu có ≥2 người thạo và điểm TB lên ~${Math.round(pass*100)}%+, team sẽ tiệm cận KPI và bớt phải OT. Nếu KPI ${kpi} khó chạm mãi, cân nhắc đặt lại KPI sát thực tế đo được.</div></div>`;
+  body.innerHTML=covHtml+scoreHtml+kpiNote;
+}
 /* ---------- IMPORT/EXPORT ---------- */
 function exportData(){
   saveAll();
@@ -2804,7 +2874,7 @@ function renderAll(){
   const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
   const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
   const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
-  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();renderAccounts();
+  fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();renderAccounts();renderEval();
   populateUserStaff();renderReg();updateNavBadge();
 }
 // ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY (gắn trong chi tiết từng ngày) =====
