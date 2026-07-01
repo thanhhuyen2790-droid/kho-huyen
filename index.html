@@ -616,8 +616,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.0"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-83 (Phase 1: tab Đánh giá & Đào tạo; so sánh Chuẩn vs Thực tế trong kịch bản — chênh năng lực/giờ xong + khâu cần đào tạo)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-86 (Phase 2 xong: giờ vào sớm 7h30 theo từng ngày — mô phỏng đúng người vào sớm xác nhận+nhặt, số đông vào 8h30)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2205,7 +2205,7 @@ function fatigueFactor(min){ if(S.config&&S.config.fatigueOn===false)return 1; c
 function clockOf(ca,min){ const def=ca==='Chiều'?'13:30':'07:30'; let s=(S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def; const pr=String(s).split(':'); let tot=(+pr[0]||0)*60+(+pr[1]||0)+Math.round(min); tot=((tot%1440)+1440)%1440; const H=Math.floor(tot/60),M=tot%60; return H+'h'+(M<10?'0'+M:M); }
 // ===== MÔ PHỎNG SÓNG TỪNG PHÚT (Discrete Event Sim): ai làm gì, bao lâu, khi nào chuyển khâu =====
 // Bám lời giải cân bằng (LP) làm kế hoạch trạm; khâu của mình chưa có hàng -> xuống phụ khâu trước; cân bằng feed (ko nhồi người vượt mức khâu trước nuôi); có mệt mỏi.
-function simWave(mem,N,capMin,crabD,pins){
+function simWave(mem,N,capMin,crabD,pins,avail){
   const ORDER=S.stages.map(s=>s.key); const iOf=k=>ORDER.indexOf(k); const caH=S.config.caHours||4; const dtH=1/60;
   const rate0=(p,k)=>(p.skills[k]||0);
   const crabPerMin=(S.config.crabRate||30)/caH/60; let crabRem=crabD||0; // 🦀 người rảnh nhảy sang Crabthing (SKU/ca ÷ giờ ÷ 60)
@@ -2225,7 +2225,8 @@ function simWave(mem,N,capMin,crabD,pins){
     const cap={}; ORDER.forEach(k=>cap[k]=0); const nAt={}; const asg={};
     const slotMax=k=>k==='xacnhan'?1:1e9; // XÁC NHẬN chỉ 1 người/lúc (1 máy) — muốn đổi người thì người trước xong người sau mới vào
     const ord=mem.slice().sort((a,b)=>Math.max.apply(null,ORDER.map(k=>rate0(b,k)))-Math.max.apply(null,ORDER.map(k=>rate0(a,k))));
-    for(const p of ord){ const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6; const slot=k=>(nAt[k]||0)<slotMax(k);
+    for(const p of ord){ if(avail&&(avail[p.id]||0)>t)continue; // 🌅 chưa tới giờ vào ca -> chưa được xếp việc
+      const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6; const slot=k=>(nAt[k]||0)<slotMax(k);
       const fedOK=k=>{const i=iOf(k); if(i===0)return true; const up=ORDER[i-1]; return R(up)<=1e-6||cap[k]<cap[up]+1e-6;};
       const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k)&&slot(k);
       let pick=null;
@@ -2276,6 +2277,8 @@ function closeWaveModal(){const ov=document.getElementById('waveModal'); if(ov)o
 // ✋ PHÂN TAY: ghim / bỏ ghim khâu cho 1 người trong 1 ca, rồi vẽ lại modal ngay
 function setPin(ds,ca,id,stage){ S.manualPin=S.manualPin||{}; const k=ds+'|'+ca; S.manualPin[k]=S.manualPin[k]||{}; if(stage)S.manualPin[k][id]=stage; else delete S.manualPin[k][id]; if(!Object.keys(S.manualPin[k]).length)delete S.manualPin[k]; saveAll(); if(CUR_WAVE_KEY)openWaveModal(CUR_WAVE_KEY); }
 function clearPins(ds,ca){ if(S.manualPin)delete S.manualPin[ds+'|'+ca]; saveAll(); if(CUR_WAVE_KEY)openWaveModal(CUR_WAVE_KEY); }
+// 🌅 chọn người vào sớm 7h30 cho 1 ngày (ca Sáng)
+function setEarly(ds,id,on){ S.earlyShift=S.earlyShift||{}; S.earlyShift[ds]=S.earlyShift[ds]||[]; const arr=S.earlyShift[ds]; const i=arr.indexOf(id); if(on&&i<0)arr.push(id); if(!on&&i>=0)arr.splice(i,1); if(!arr.length)delete S.earlyShift[ds]; saveAll(); if(CUR_WAVE_KEY)openWaveModal(CUR_WAVE_KEY); }
 // ===== XUẤT FILE KỊCH BẢN: PDF (qua In) · Word (.doc) · Excel (.xls) — đọc được, gửi Zalo =====
 function waveLbl(key){ const wd=['CN','T2','T3','T4','T5','T6','T7']; const ds=key.split('|')[0]; const d=WAVE_CACHE[key]; const ca=d?d.ca:''; let lbl=ds+' · ca '+ca; try{const dt=parse(ds); lbl=wd[dt.getDay()]+' '+ds.slice(5)+' · ca '+ca;}catch(e){} return {ds,lbl,ca}; }
 function waveExportData(cs,ca){
@@ -2450,14 +2453,17 @@ function wavePlaybook(cs,ca,ds){
   const shiftMin=caH*60; const cap=Math.round(pipelineThroughput(mem).cap);
   const overCa=cap<need-1; const chartN=overCa?Math.max(1,cap):need; // ca quá tải -> chỉ mô phỏng phần làm được trong ca
   const crabPool=(S.demand&&S.demand.crabSku)||0; // 🦀 cho người rảnh nhảy sang Crabthing
+  // 🌅 GIỜ VÀO SỚM (chỉ ca Sáng): người vào 7h30 (avail=0), số còn lại vào 8h30 (avail=60')
+  let avail=null;
+  if(ca==='Sáng'){ const early=(S.earlyShift&&S.earlyShift[ds])||[]; if(early.length){ avail={}; mem.forEach(p=>{avail[p.id]=early.includes(p.id)?0:60;}); } }
   // ✋ PHÂN TAY: đọc ghim khâu của admin cho ca này
   const pinKey=(ds||'')+'|'+ca; const pinsRaw=(S.manualPin&&S.manualPin[pinKey])||null;
   const pins=pinsRaw?Object.fromEntries(Object.entries(pinsRaw).filter(([id,k])=>k&&mem.some(p=>p.id===id))):null;
   const usePins=pins&&Object.keys(pins).length>0;
-  const sim=simWave(mem,chartN,null,crabPool,usePins?pins:null); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
+  const sim=simWave(mem,chartN,null,crabPool,usePins?pins:null,avail); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
   // so sánh đơn LÀM ĐƯỢC TRONG CA: bản phân tay vs tự động
   let pinCmp='';
-  if(usePins){ const within=pp=>simWave(mem,chartN,shiftMin,crabPool,pp).doneOrders;
+  if(usePins){ const within=pp=>simWave(mem,chartN,shiftMin,crabPool,pp,avail).doneOrders;
     const aOrd=within(null), mOrd=within(pins); const diff=mOrd-aOrd;
     pinCmp=`<div class="advnote" style="background:#eef6ff;border-color:#bcdcff;color:#1d4e89">✋ <b>Bản PHÂN TAY của bạn</b> ${diff>0?'<b style="color:#0f6e56">TỐT HƠN tự động 👍</b>':(diff<0?'<b style="color:#c0392b">KÉM HƠN tự động</b>':'ngang bản tự động')} → <b style="color:${diff>=0?'#0f6e56':'#c0392b'}">${diff>=0?'+':''}${diff} đơn</b>. <span style="font-weight:400">(đơn hoàn tất trọn 7 khâu trong giờ ca: phân tay ${mOrd} · tự động ${aOrd})</span></div>`;
   }
@@ -2541,11 +2547,12 @@ function wavePlaybook(cs,ca,ds){
   // ===== 📊 CHUẨN vs THỰC TẾ: cái giá của tay nghề chưa tới =====
   const memStd=mem.map(p=>{const sk={};S.stages.forEach(s=>{sk[s.key]=(p.skills[s.key]||0)>0?s.rate:0;});return Object.assign({},p,{skills:sk});});
   const capStd=Math.round(pipelineThroughput(memStd).cap);
-  const mkStd=simWave(memStd,chartN,null,crabPool).makespan;
+  const mkStd=simWave(memStd,chartN,null,crabPool,null,avail).makespan;
   const stageGap=S.stages.filter(s=>s.key!=='xacnhan').map(s=>{const a=mem.reduce((x,p)=>x+(p.skills[s.key]||0),0);const b=memStd.reduce((x,p)=>x+(p.skills[s.key]||0),0);return {s,ratio:b>0?a/b:1};}).filter(x=>x.ratio<0.999).sort((a,b)=>a.ratio-b.ratio);
   const worst=stageGap[0];
   const svaHTML=`<div class="whybox">`+
     `<div class="wy"><b>Năng lực:</b> hiện tại <b>${cap}</b> đơn/ca · nếu cả team đạt chuẩn <b>${capStd}</b> đơn/ca → chênh <b style="color:#c0392b">${Math.max(0,capStd-cap)} đơn</b> là do tay nghề chưa tới.</div>`+
+    (cap<need-Math.max(5,Math.round(need*0.01))?`<div class="wy"><b>Chẩn đoán:</b> ${capStd>=need?'<b style="color:#8a6500">ĐỦ NGƯỜI nhưng THIẾU KỸ NĂNG</b> — chỉ cần đào tạo là kịp, KHÔNG cần tuyển thêm.':'<b style="color:#c0392b">THIẾU NGƯỜI thật</b> — kể cả cả team đạt chuẩn vẫn không đủ → cần tuyển thêm hoặc thêm ca.'}</div>`:'')+
     `<div class="wy"><b>Giờ xong ${chartN} đơn:</b> hiện tại ~<b>${clk(mk)}</b> · nếu đạt chuẩn ~<b>${clk(mkStd)}</b> → ${mk>mkStd?`<b style="color:#0f6e56">sớm hơn ${mk-mkStd} phút</b> (đỡ phải OT)`:'≈ ngang nhau'}.</div>`+
     (worst?`<div class="wy"><b>Khâu tổn thất nhiều nhất do kỹ năng yếu:</b> <b>${stN(worst.s.key)}</b> — team chỉ đạt ~${Math.round(worst.ratio*100)}% so chuẩn → <b>ưu tiên đào tạo khâu này</b>. Ai cần học xem tab 📈 <b>Đánh giá &amp; Đào tạo</b>.</div>`:'')+
   `</div>`;
@@ -2555,10 +2562,17 @@ function wavePlaybook(cs,ca,ds){
     return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="min-width:140px;font-size:12px">${esc(p.name)}</span><select onchange="setPin('${ds||''}','${ca}','${p.id}',this.value)" style="font-size:12px;padding:3px 6px;max-width:170px">${opts}</select></div>`;
   }).join('');
   const pinPanel=`<div style="font-size:12px;color:#444;margin-bottom:6px">Ghim mỗi người vào 1 <b>khâu chính</b> (để <b>Tự động</b> thì máy tự xếp). Phần mềm chạy lại mô phỏng theo cách của bạn và so sánh số đơn ở trên cùng.</div>${pinRows}${usePins?`<button class="btn ghost sm" style="margin-top:8px" onclick="clearPins('${ds||''}','${ca}')">↺ Xoá ghim, về tự động</button>`:''}`;
+  // 🌅 GIỜ VÀO SỚM (ca Sáng)
+  let earlySec='';
+  if(ca==='Sáng'){ const early=(S.earlyShift&&S.earlyShift[ds])||[];
+    const rows=mem.filter(p=>!p.boss).map(p=>`<label style="display:inline-flex;align-items:center;gap:5px;margin:3px 12px 3px 0;font-size:12px;cursor:pointer"><input type="checkbox" ${early.includes(p.id)?'checked':''} onchange="setEarly('${ds||''}','${p.id}',this.checked)"> ${esc(p.name)}</label>`).join('');
+    earlySec=`<details class="pinsec"${early.length?' open':''}><summary>🌅 Giờ vào sớm 7h30 (xử lý đơn tồn đêm)</summary><div style="padding:8px 2px 2px"><div style="font-size:12px;color:#444;margin-bottom:6px">Chọn ai vào sớm <b>7h30</b> (xác nhận + nhặt đơn tồn từ đêm); số còn lại vào <b>8h30</b>. Thường 1 full-time + 1 part-time (xoay vòng). Kịch bản &amp; biểu đồ sẽ chạy lại theo giờ vào lệch.</div>${rows}</div></details>`;
+  }
   return `<div class="waveFull">`+
     pinCmp+
     `<details class="whysec" open><summary>🔍 Vì sao kịch bản thế này? — phân tích tự động</summary>${whyPanel}</details>`+
     `<details class="whysec"><summary>📊 Chuẩn vs Thực tế — cái giá của tay nghề</summary>${svaHTML}</details>`+
+    earlySec+
     `<details class="pinsec"${usePins?' open':''}><summary>✋ Phân tay — tự ghim người vào khâu</summary>${pinPanel}</details>`+
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
     `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút, số đơn trên từng khối:</div>`+
@@ -2578,6 +2592,22 @@ function bossToggle(r){
     return `<div class="bosstoggle off"><label><input type="checkbox" onchange="toggleBossOff('${ds}')"> 👑 <b>${name} đang BẬN — không tham gia</b></label><div class="hint">Đã tính kịch bản chỉ với người hiện có${r.bossDeclined?' — <b style="color:var(--bad)">vẫn còn thiếu</b>, xem đề xuất bù bên dưới':''}. Tích lại nếu cô ấy rảnh.</div></div>`;
   }
   return `<div class="bosstoggle on"><label><input type="checkbox" checked onchange="toggleBossOff('${ds}')"> 👑 <b>${name} tham gia</b> (cân team)</label><div class="hint">Bỏ tích nếu cô ấy bận — phần mềm tính lại kịch bản ngay với người hiện có.</div></div>`;
+}
+// ⏰ Ước giờ dự kiến xong & OT so với giờ đóng ca chiều (18h) — vì đơn bắt buộc xong trong ngày, thiếu năng lực = cả team ở lại
+function otEstimate(r){
+  if(!r||r.type==='closed')return '';
+  const caH=S.config.caHours||4; const closeH=18;
+  const cap=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);
+  const orders=r.orders;
+  if(cap>=orders-caSlack(orders)-1e-6){
+    return `<div class="metric" style="color:#0f6e56">⏰ Dự kiến <b>xong trong giờ</b> (trước ${closeH}h) — không phải OT.</div>`;
+  }
+  const shortfall=Math.max(0,orders-cap);
+  const chieu=r.caStat&&r.caStat['Chiều'];
+  const rateH=(chieu&&chieu.capMain)?chieu.capMain/caH:(cap/(2*caH));
+  const otMin=rateH>0?Math.round(shortfall/rateH*60):0;
+  const finM=closeH*60+otMin; const fh=Math.floor(finM/60),fm=finM%60;
+  return `<div class="metric" style="color:#c0392b;font-weight:600">⏰ Khả năng <b>phải ở lại muộn</b>: thiếu ~${Math.round(shortfall)} đơn → dự kiến xong ~<b>${fh}h${fm<10?'0'+fm:fm}</b> (trễ ~${otMin}' so ${closeH}h), <b>cả team OT</b>. Cách bù xem ở kịch bản &amp; đề xuất bên dưới.</div>`;
 }
 function toggleBossOff(ds){
   S.bossOff=S.bossOff||{};
@@ -2733,13 +2763,16 @@ function renderWeekView(){
       ${bossToggle(r)}
       ${r.type!=='closed'?dayActualForm(r):''}
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
+      ${otEstimate(r)}
       <div class="caRow">${caSection}</div>
       ${stagesHtml}
       ${crabWarn}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
     </div></div>`;
   }).join('');
-  document.getElementById('planGrid').innerHTML=optBanner(ws)+stripHtml+detailsHtml;
+  const otDays=result.filter(r=>r.type!=='closed'&&(Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity)<r.orders-caSlack(r.orders)-1e-6));
+  const otBanner=otDays.length>=3?`<div class="sug bad" style="margin-bottom:8px">🔁 <b>Cảnh báo vòng xoáy OT–mệt:</b> tuần này có <b>${otDays.length} ngày</b> nhiều khả năng phải ở lại muộn (${otDays.map(r=>DOW[result.indexOf(r)]).join(', ')}). Ở lại liên tục làm nhân sự mệt → năng suất tụt → càng dễ trễ. Nên xử lý <b>gốc</b>: đào tạo khâu nút thắt (tab 📈 Đánh giá) hoặc bổ sung người, thay vì bù bằng OT triền miên.</div>`:'';
+  document.getElementById('planGrid').innerHTML=optBanner(ws)+otBanner+stripHtml+detailsHtml;
 
   const act=S.staff.filter(s=>s.active);
   const max=Math.max(1,...act.map(s=>acc[s.id]||0));
