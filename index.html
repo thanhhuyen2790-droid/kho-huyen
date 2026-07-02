@@ -449,6 +449,19 @@
       </div>
       <div id="evalBody" style="margin-top:12px"></div>
     </div>
+    <div class="card">
+      <h2>🎯 Nhập tốc độ đo được (tự học, cập nhật dần)</h2>
+      <p class="sub">Sau khi <b>bấm giờ thực tế</b> một khâu, nhập vào đây. Phần mềm lấy <b>trung bình các lần đo</b> để cập nhật tốc độ người đó ở khâu đó — càng đo nhiều lần (ở các ngày/đơn khác nhau) càng chuẩn. Nên đo lúc chạy đều, ≥30 phút, trừ thời gian nghỉ.</p>
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div><label class="fld" style="margin:0 0 2px">Nhân sự</label><select id="sp-staff" style="max-width:180px"></select></div>
+        <div><label class="fld" style="margin:0 0 2px">Khâu</label><select id="sp-stage" style="max-width:150px"></select></div>
+        <div><label class="fld" style="margin:0 0 2px">Số đơn làm được</label><input id="sp-orders" type="number" min="1" oninput="spPreview()" style="max-width:120px" placeholder="vd 90"></div>
+        <div><label class="fld" style="margin:0 0 2px">Trong … phút</label><input id="sp-mins" type="number" min="1" oninput="spPreview()" style="max-width:110px" placeholder="vd 40"></div>
+        <button class="btn" onclick="saveMeasuredSpeed()">Ghi &amp; cập nhật</button>
+        <span id="sp-preview" class="hint" style="align-self:center"></span>
+      </div>
+      <div id="sp-log" style="margin-top:10px"></div>
+    </div>
   </section>
 
   <!-- TAB: CÀI ĐẶT (gồm Tài khoản) — CHỈ ADMIN xem & sửa -->
@@ -616,8 +629,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-86 (Phase 2 xong: giờ vào sớm 7h30 theo từng ngày — mô phỏng đúng người vào sớm xác nhận+nhặt, số đông vào 8h30)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.4"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-87 (Phase 3&4: kế hoạch tuyển dụng + đề xuất mở rộng CN/ca tối; tự học tốc độ từ số đo thực + gợi ý KPI công bằng; smoke-test toàn app)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2878,9 +2891,45 @@ function renderEval(){
   const teamAvg={}; core.forEach(s=>{const rs=act.map(p=>p.skills[s.key]||0).filter(x=>x>0);teamAvg[s.key]=rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0;});
   const teamTrongoi = core.every(s=>teamAvg[s.key]>0)? Math.round(1/core.reduce((a,s)=>a+1/teamAvg[s.key],0)) : null;
   const ok=teamTrongoi!=null&&teamTrongoi>=kpi;
+  const indiv=act.map(p=>core.every(s=>(p.skills[s.key]||0)>0)?1/core.reduce((a,s)=>a+1/(p.skills[s.key]),0):null).filter(x=>x);
+  const bestIndiv=indiv.length?Math.round(Math.max(...indiv)):null;
+  const suggKpi=teamTrongoi!=null?Math.round((teamTrongoi+(bestIndiv||teamTrongoi))/2/5)*5:null;
   const kpiNote=`<h3 style="font-size:15px;margin:16px 0 4px">3) Năng suất trọn gói của team vs KPI</h3>`+
-    `<div class="sug ${ok?'ok':'warn'}">Tốc độ trọn gói TB của team ước ~<b>${teamTrongoi!=null?teamTrongoi:'—'}</b> đơn/h · KPI mục tiêu <b>${kpi}</b> đơn/h → ${teamTrongoi!=null?(ok?'<b style="color:#0f6e56">ĐẠT</b>':`đang đạt <b>${Math.round(teamTrongoi/kpi*100)}%</b> KPI (còn thiếu ~${kpi-teamTrongoi} đơn/h)`):'chưa đủ dữ liệu — còn khâu chưa ai làm được'}. <div class="hint" style="margin-top:4px">Khi mọi khâu có ≥2 người thạo và điểm TB lên ~${Math.round(pass*100)}%+, team sẽ tiệm cận KPI và bớt phải OT. Nếu KPI ${kpi} khó chạm mãi, cân nhắc đặt lại KPI sát thực tế đo được.</div></div>`;
-  body.innerHTML=covHtml+scoreHtml+kpiNote;
+    `<div class="sug ${ok?'ok':'warn'}">Tốc độ trọn gói TB của team ước ~<b>${teamTrongoi!=null?teamTrongoi:'—'}</b> đơn/h · người giỏi nhất ~<b>${bestIndiv||'—'}</b> · KPI mục tiêu <b>${kpi}</b> đơn/h → ${teamTrongoi!=null?(ok?'<b style="color:#0f6e56">ĐẠT</b>':`đang đạt <b>${Math.round(teamTrongoi/kpi*100)}%</b> KPI (còn thiếu ~${kpi-teamTrongoi} đơn/h)`):'chưa đủ dữ liệu — còn khâu chưa ai làm được'}. <div class="hint" style="margin-top:4px">${suggKpi?`💡 <b>KPI gợi ý từ dữ liệu ~${suggKpi} đơn/h</b> (giữa mức TB đội và người giỏi nhất) — thực tế &amp; công bằng hơn nếu ${kpi} mãi không chạm. `:''}Khi mọi khâu có ≥2 người thạo và điểm TB lên ~${Math.round(pass*100)}%+, team sẽ tiệm cận KPI và bớt phải OT.</div></div>`;
+  // 4) Kế hoạch nhân lực — tuyển hay đào tạo
+  const dayH=(S.config.caHours||4)*(S.config.fullDay||2);
+  const mult=S.demand.mult||{mid:2,peak:4}; const mi=(S.demand.month||1)-1; const b=S.demand.base||{};
+  const base=Math.round(((b.shopee||[])[mi]||0)+((b.tiktok||[])[mi]||0)+((b.lazada||[])[mi]||0));
+  const nHead=act.length; const actRate=teamTrongoi||12;
+  const needAt=(orders,rate)=>rate>0?Math.ceil(orders/(rate*dayH)):0;
+  const scen=[['Ngày thường',base],['Ngày 15/25 (×'+mult.mid+')',Math.round(base*mult.mid)],['Ngày sale (×'+mult.peak+')',Math.round(base*mult.peak)]];
+  const planRows=scen.map(a=>{const ord=a[1];const nA=needAt(ord,actRate);const nS=needAt(ord,kpi);const gap=Math.max(0,nA-nHead);return `<tr><td>${a[0]}</td><td style="text-align:center">${ord}</td><td style="text-align:center;font-weight:700">${nA}</td><td style="text-align:center;color:#0f6e56">${nS}</td><td style="text-align:center">${head}</td><td style="text-align:center;font-weight:700;color:${gap>0?'#c0392b':'#0f6e56'}">${gap>0?'+'+gap:'đủ'}</td></tr>`;}).join('');
+  const thinSkills=cov.filter(c=>c.thin).map(c=>c.s.name);
+  const midOrd=Math.round(base*mult.mid); const gapMid=Math.max(0,needAt(midOrd,actRate)-head); const gapMidStd=Math.max(0,needAt(midOrd,kpi)-head); const saveByTrain=Math.max(0,gapMid-gapMidStd);
+  const planHtml=`<h3 style="font-size:15px;margin:16px 0 4px">4) Kế hoạch nhân lực — tuyển hay đào tạo?</h3>`+
+    `<p class="sub">Ước theo tốc độ trọn gói (${actRate} đơn/h) và 1 người làm ${dayH}h/ngày. Số liệu tham khảo để bàn tuyển dụng, không phải con số tuyệt đối.</p>`+
+    `<div class="schedgrid"><table class="catbl"><thead><tr><th>Loại ngày</th><th>Đơn/ngày</th><th>Cần (hiện tại)</th><th>Cần (đạt chuẩn)</th><th>Hiện có</th><th>Thiếu</th></tr></thead><tbody>${planRows}</tbody></table></div>`+
+    `<div class="sug ${gapMid>0?'warn':'ok'}" style="margin-top:8px">${gapMid>0?`Để chạy <b>ngày 15/25 không OT</b> cần thêm ~<b>${gapMid} người</b> (tốc độ hiện tại). `:'Ngày thường & 15/25 hiện đủ người (không OT). '}${saveByTrain>0?`Nếu <b>đào tạo team lên chuẩn</b> thì chỉ cần thêm ~${gapMidStd} người → <b>đỡ tuyển ~${saveByTrain} người</b>.`:''}${thinSkills.length?`<br>🎯 Ưu tiên <b>tuyển/đào tạo người làm được</b>: ${thinSkills.join(', ')}.`:''}</div>`;
+  // 5) Mở rộng khi đơn tăng
+  const maxNoOT=Math.round(head*actRate*dayH); const peakOrd=Math.round(base*mult.peak);
+  const expandHtml=`<h3 style="font-size:15px;margin:16px 0 4px">5) Đề xuất mở rộng khi đơn tăng (Chủ nhật / ca chiều–tối)</h3>`+
+    `<div class="sug ${peakOrd>maxNoOT?'warn':'ok'}">Năng lực 1 ngày <b>không OT</b> của đội hiện tại ~<b>${maxNoOT}</b> đơn. Ngày sale ước <b>${peakOrd}</b> đơn → ${peakOrd>maxNoOT?`<b style="color:#c0392b">vượt ${peakOrd-maxNoOT} đơn</b>. Đề xuất theo thứ tự: ① <b>mở làm Chủ nhật</b> (xả bớt đơn dồn đầu tuần); ② <b>thêm ca chiều–tối</b> (kéo giờ vận hành bằng ca chính thức thay vì OT); ③ tuyển thời vụ mùa sale. Chỉ mở khi <b>đủ người + đủ kỹ năng</b>, tránh OT.`:'trong tầm xử lý — chưa cần mở rộng.'}</div>`;
+  body.innerHTML=covHtml+scoreHtml+kpiNote+planHtml+expandHtml;
+  // form nhập tốc độ đo
+  const ss=document.getElementById('sp-staff'); if(ss){const cur=ss.value;ss.innerHTML=act.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');if(cur)ss.value=cur;}
+  const sg=document.getElementById('sp-stage'); if(sg&&!sg.value)sg.innerHTML=stages.map(s=>`<option value="${s.key}">${esc(s.name)}</option>`).join('');
+  renderSpLog();
+}
+function spPreview(){ const o=+((document.getElementById('sp-orders')||{}).value)||0; const m=+((document.getElementById('sp-mins')||{}).value)||0; const el=document.getElementById('sp-preview'); if(el)el.innerHTML=(o>0&&m>0)?`→ <b style="color:#1d6fe0">${Math.round(o/(m/60))}</b> đơn/h`:''; }
+function renderSpLog(){ const el=document.getElementById('sp-log'); if(!el)return; const rows=[]; S.staff.filter(s=>s.active).forEach(p=>{ if(p.speedLog)Object.keys(p.speedLog).forEach(k=>{const L=p.speedLog[k];if(L&&L.n)rows.push(`• ${esc(p.name)} · ${stageName(k)}: đo <b>${L.n}</b> lần → TB <b>${Math.round(L.sum/L.n)}</b> đơn/h`);});}); el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--muted);margin-bottom:3px">Lịch sử đo (đang dùng làm tốc độ chính thức):</div>`+rows.map(r=>`<div style="font-size:12px">${r}</div>`).join(''):`<span class="hint">Chưa có lần đo nào.</span>`; }
+function saveMeasuredSpeed(){ const pid=(document.getElementById('sp-staff')||{}).value; const k=(document.getElementById('sp-stage')||{}).value; const o=+((document.getElementById('sp-orders')||{}).value)||0; const m=+((document.getElementById('sp-mins')||{}).value)||0;
+  if(!pid||!k||o<=0||m<=0){alert('Chọn người, khâu, nhập số đơn + số phút (>0).');return;}
+  const rate=Math.round(o/(m/60)); const st=S.staff.find(s=>s.id===pid); if(!st)return;
+  st.speedLog=st.speedLog||{}; const L=st.speedLog[k]||{sum:0,n:0}; L.sum+=rate; L.n+=1; st.speedLog[k]=L;
+  st.skills=st.skills||{}; st.skills[k]=Math.round(L.sum/L.n);
+  saveAll(); renderAll();
+  const el=document.getElementById('sp-preview'); if(el)el.innerHTML=`✓ Đã ghi: ${stageName(k)} → <b>${st.skills[k]}</b> đơn/h (TB ${L.n} lần đo)`;
+  const oo=document.getElementById('sp-orders'),mm=document.getElementById('sp-mins'); if(oo)oo.value='';if(mm)mm.value='';
 }
 /* ---------- IMPORT/EXPORT ---------- */
 function exportData(){
