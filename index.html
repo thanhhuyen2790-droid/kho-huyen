@@ -328,7 +328,7 @@
         <div><label class="fld">Hệ số ngày trùng (6.6…)</label><input id="dm-peak" type="number" step="0.1" onchange="saveAll();renderDemand()"></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div><label class="fld">Ngày 15&amp;25 trong tháng</label><input id="dm-mid-dates" placeholder="15,25" onchange="saveAll();renderDemand()"></div>
+        <div><label class="fld">Ngày 15&amp;25 trong tháng</label><input id="dm-mid-dates" placeholder="15,25" onchange="saveAll();renderDemand()"><small class="hint" id="midDatesHint"></small></div>
         <div><label class="fld">Ngày trùng (cách nhau dấu phẩy)</label><input id="dm-peak-dates" placeholder="VD: 6" onchange="saveAll();renderDemand()"></div>
         <div><label class="fld">Ngày kho đóng cửa</label><input id="dm-closed-dates" placeholder="VD: 0 (để trống)" onchange="saveAll();renderDemand()"></div>
       </div>
@@ -629,8 +629,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.6"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-89 (biểu đồ hiện ĐỦ mọi người đăng ký kể cả người chưa có việc (nhãn 'rảnh') + mục Vì sao giải thích ai đăng ký mà không có việc)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.7"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-90 (nhắc cảnh báo khi ô Ngày 15&25 để trống -> không ngày nào ×2; hiện đủ người đăng ký trên biểu đồ)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1132,6 +1132,7 @@ function renderDemand(){
   document.getElementById('dm-mid').value=S.demand.mult.mid;
   document.getElementById('dm-peak').value=S.demand.mult.peak;
   document.getElementById('dm-mid-dates').value=S.demand.midDates;
+  {const mh=document.getElementById('midDatesHint'); if(mh)mh.innerHTML=(S.demand.midDates&&(''+S.demand.midDates).trim())?`Các ngày này ×${S.demand.mult.mid}`:`<span style="color:#c0392b">⚠️ Đang TRỐNG → không ngày nào ×${S.demand.mult.mid}. Gõ 15,25 để bật.</span>`;}
   document.getElementById('dm-peak-dates').value=S.demand.peakDates;
   document.getElementById('dm-closed-dates').value=S.demand.closedDates;
   document.getElementById('dm-sunday-off').checked=S.config.sundayOff!==false;
