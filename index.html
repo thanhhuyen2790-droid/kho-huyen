@@ -629,8 +629,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.5"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-88 (sửa lỗi biểu đồ ca rỗng khi đội không ai biết Xác nhận: cho khâu không ai biết chạy ở mức sàn để dây chuyền không đứng)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.6"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-89 (biểu đồ hiện ĐỦ mọi người đăng ký kể cả người chưa có việc (nhãn 'rảnh') + mục Vì sao giải thích ai đăng ký mà không có việc)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2420,7 +2420,9 @@ function waveGantt(mem,sim,ca,shiftMin){
   const stN=k=>k==='crab'?'🦀 Crabthing':(()=>{const s=S.stages.find(x=>x.key===k);return s?s.name:k;})(); const clk=m=>clockOf(ca,m);
   const mk=sim.makespan||1; const span=Math.max(mk, shiftMin||mk); // trục chạy đủ khung giờ ca
   const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
-  const people=mem.filter(p=>(sim.blocks[p.id]||[]).length).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||(sumSk(b)-sumSk(a))); // người giỏi lên trên (👑 trên cùng)
+  // HIỆN MỌI người đăng ký (kể cả người 0 việc để không "biến mất" khỏi biểu đồ); người có việc lên trên, người rảnh xuống cuối
+  const hasBl=p=>(sim.blocks[p.id]||[]).length>0;
+  const people=mem.filter(p=>hasBl(p)||!p.boss).sort((a,b)=>((b.boss?1:0)-(a.boss?1:0))||((hasBl(b)?1:0)-(hasBl(a)?1:0))||(sumSk(b)-sumSk(a)));
   if(!people.length) return '';
   // LÀM CHÍNH ở 1 khâu = người có SKILL MẠNH NHẤT trong số người làm khâu đó; còn lại = HỖ TRỢ
   const works=(p,k)=>(sim.blocks[p.id]||[]).some(b=>b.k===k);
@@ -2429,7 +2431,7 @@ function waveGantt(mem,sim,ca,shiftMin){
     if(!bid)people.forEach(p=>{ if(p.boss&&works(p,s.key)){const sk=(p.skills[s.key]||0); if(sk>bsk){bsk=sk;bid=p.id;}} }); // không có người thường -> Bà Chúa Kho gọi bù làm chính
     if(bid)stageMain[s.key]=bid; });
   const mainStageOf=p=>{let best=null,bt=-1; S.stages.forEach(s=>{ if(stageMain[s.key]===p.id){const t=(sim.blocks[p.id]||[]).filter(b=>b.k===s.key).reduce((a,b)=>a+(b.to-b.from),0); if(t>bt){bt=t;best=s.key;}} }); return best;};
-  const namesCol=`<div style="height:16px"></div>`+people.map(p=>{const h=mainStageOf(p),hc=h?STAGE_COLOR[h]:null;const tag=hc?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:${hc[0]};color:#fff;font-weight:600">★${hc[1]}</span>`:` <span style="font-size:9px;color:#999">(phụ)</span>`;return `<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(p.name)} — làm chính: ${h?stN(h):'chỉ hỗ trợ'}">${p.boss?'👑 ':''}${esc(p.name)}${tag}</div>`;}).join('');
+  const namesCol=`<div style="height:16px"></div>`+people.map(p=>{const h=mainStageOf(p),hc=h?STAGE_COLOR[h]:null;const idle=!hasBl(p);const tag=idle?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:#e57373;color:#fff;font-weight:600">rảnh</span>`:(hc?` <span style="font-size:9px;padding:0 4px;border-radius:4px;background:${hc[0]};color:#fff;font-weight:600">★${hc[1]}</span>`:` <span style="font-size:9px;color:#999">(phụ)</span>`);return `<div style="height:32px;line-height:32px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;${idle?'opacity:.6':''}" title="${esc(p.name)} — ${idle?'đăng ký nhưng chưa có việc phù hợp trong kịch bản này':('làm chính: '+(h?stN(h):'chỉ hỗ trợ'))}">${p.boss?'👑 ':''}${esc(p.name)}${tag}</div>`;}).join('');
   // ĐỊNH VỊ THEO %: biểu đồ luôn lấp đầy chiều ngang khả dụng; ca dài thì min-width cho cuộn
   const minW=Math.round(span*3.2), apxW=Math.max(820,minW), pct=v=>v/span*100, hourPct=60/span*100, quarterPct=15/span*100;
   let axis=''; for(let m=0;m<=span;m+=15){const isH=(m%60===0);axis+=`<div style="position:absolute;left:${pct(m).toFixed(3)}%;font-size:9px;color:${isH?'#555':'#aaa'};font-weight:${isH?600:400};transform:${m===0?'translateX(0)':'translateX(-50%)'};white-space:nowrap">${clk(m)}</div>`;}
@@ -2550,6 +2552,10 @@ function wavePlaybook(cs,ca,ds){
   mem.forEach(p=>{const b=pipeB(p);for(let i=0;i<b.length-1;i++){const g0=b[i].to,g1=b[i+1].from;if(g1-g0<25)continue;const act=activeAt(g0,g1,p.id);const canDo=act.filter(k=>(p.skills[k]||0)>0);const myNext=stN(b[i+1].k);
     gapWhy.push(`<div class="wy">▸ <b>${esc(p.name)}</b> trắng <b>${clk(g0)}–${clk(g1)}</b> (${g1-g0}'): ${canDo.length?`các khâu đang chạy (${act.map(stN).join(', ')}) đã đủ người — thêm cũng không nhanh hơn vì nghẽn ở <b>${stN(bnK)}</b>; đợi đến lượt khâu <b>${myNext}</b>.`:`dây chuyền lúc này chỉ chạy <b>${act.map(stN).join(', ')||'—'}</b> mà <b>${esc(p.name)}</b> <span style="color:#c0392b">không có kỹ năng (skill 0)</span> ở các khâu đó → phải đợi khâu <b>${myNext}</b> của mình (cuối dây chuyền) được cấp hàng.`}</div>`);
   }});
+  // Người ĐĂNG KÝ nhưng KHÔNG có việc nào trong kịch bản (kỹ năng hẹp + phần việc phù hợp đã xong sớm)
+  const noWork=mem.filter(p=>!p.boss && !(sim.blocks[p.id]||[]).length);
+  noWork.forEach(p=>{ const canKeys=S.stages.filter(s=>(p.skills[s.key]||0)>0).map(s=>stN(s.key));
+    gapWhy.push(`<div class="wy">▸ <b>${esc(p.name)}</b> <span style="color:#c0392b">đăng ký nhưng chưa có việc</span> trong kịch bản này — chỉ biết ${canKeys.length?('<b>'+canKeys.join(', ')+'</b>'):'rất ít khâu'}; phần việc đó đã xong sớm / do người khác làm. <b>Nên đào tạo thêm khâu</b> (nhất là nút thắt <b>${stN(bnK)}</b>) để tận dụng.</div>`); });
   const adv2=staffingAdvice(cs);
   const trainees=mem.filter(p=>!p.boss&&(p.skills[bnK]||0)===0).map(p=>esc(p.name));
   const recos=[];
