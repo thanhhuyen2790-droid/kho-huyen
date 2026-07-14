@@ -324,13 +324,9 @@
         <div style="display:flex;align-items:flex-end"><small class="hint">Người làm Crabthing sẽ KHÔNG chạy đơn Shopee+Tiktok. Ưu tiên xếp người chạy đơn trước, dư mới làm Crabthing.</small></div>
       </div>
       <div class="row" style="margin-top:14px">
-        <div><label class="fld">Hệ số ngày 15 &amp; 25</label><input id="dm-mid" type="number" step="0.1" onchange="saveAll();renderDemand()"></div>
-        <div><label class="fld">Hệ số ngày trùng (6.6…)</label><input id="dm-peak" type="number" step="0.1" onchange="saveAll();renderDemand()"></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div><label class="fld">Ngày 15&amp;25 trong tháng</label><input id="dm-mid-dates" placeholder="15,25" onchange="saveAll();renderDemand()"><small class="hint" id="midDatesHint"></small></div>
-        <div><label class="fld">Ngày trùng (cách nhau dấu phẩy)</label><input id="dm-peak-dates" placeholder="VD: 6" onchange="saveAll();renderDemand()"></div>
-        <div><label class="fld">Ngày kho đóng cửa</label><input id="dm-closed-dates" placeholder="VD: 0 (để trống)" onchange="saveAll();renderDemand()"></div>
+        <div><label class="fld">Hệ số ngày 15 &amp; 25 (×)</label><input id="dm-mid" type="number" step="0.1" onchange="saveAll();renderDemand()"><small class="hint">Tự áp cho <b>ngày 15 &amp; 25 hằng tháng</b>.</small></div>
+        <div><label class="fld">Hệ số ngày trùng (×)</label><input id="dm-peak" type="number" step="0.1" onchange="saveAll();renderDemand()"><small class="hint">Tự áp <b>ngày trùng số tháng</b> (1/1, 6/6, 7/7…).</small></div>
+        <div><label class="fld">Ngày kho đóng cửa thêm (ngoài CN)</label><input id="dm-closed-dates" placeholder="VD: để trống" onchange="saveAll();renderDemand()"><small class="hint">15/25 &amp; ngày trùng tháng đã tự động — không cần điền ngày.</small></div>
       </div>
       <label class="fld inline" style="margin-top:12px;cursor:pointer"><input type="checkbox" id="dm-sunday-off" onchange="S.config.sundayOff=this.checked;saveAll();renderDemand()"> &nbsp;<b>Chủ nhật kho nghỉ — dồn đơn Chủ nhật sang Thứ Hai</b> (đơn CN tính theo loại ngày của CN: thường, hoặc ×2 nếu CN là 15/25, ×4 nếu CN là ngày trùng)</label>
       <div id="demandPreview" style="margin-top:14px"></div>
@@ -629,8 +625,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.7"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-90 (nhắc cảnh báo khi ô Ngày 15&25 để trống -> không ngày nào ×2; hiện đủ người đăng ký trên biểu đồ)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.8"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-91 (tự động: 15&25 hằng tháng ×hệ số, ngày trùng số tháng (1/1,6/6,7/7) ×hệ số — chỉ còn nhập hệ số, bỏ ô điền ngày)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1131,10 +1127,7 @@ function renderDemand(){
   document.getElementById('dm-year').value=S.demand.year;
   document.getElementById('dm-mid').value=S.demand.mult.mid;
   document.getElementById('dm-peak').value=S.demand.mult.peak;
-  document.getElementById('dm-mid-dates').value=S.demand.midDates;
-  {const mh=document.getElementById('midDatesHint'); if(mh)mh.innerHTML=(S.demand.midDates&&(''+S.demand.midDates).trim())?`Các ngày này ×${S.demand.mult.mid}`:`<span style="color:#c0392b">⚠️ Đang TRỐNG → không ngày nào ×${S.demand.mult.mid}. Gõ 15,25 để bật.</span>`;}
-  document.getElementById('dm-peak-dates').value=S.demand.peakDates;
-  document.getElementById('dm-closed-dates').value=S.demand.closedDates;
+  {const e=document.getElementById('dm-closed-dates'); if(e)e.value=S.demand.closedDates;}
   document.getElementById('dm-sunday-off').checked=S.config.sundayOff!==false;
   document.getElementById('dm-crab-sku').value=S.demand.crabSku||0;
   document.getElementById('cf-crab-rate').value=S.config.crabRate||30;
@@ -1288,9 +1281,11 @@ function isClosed(d){
 }
 // loại ngày theo đặc biệt (bỏ qua việc nghỉ) — dùng để tính đơn sàn sinh ra
 function baseType(d){
-  const day=d.getDate();
-  if(inDateList(S.demand.peakDates,day))return {t:'peak',f:S.demand.mult.peak};
-  if(inDateList(S.demand.midDates,day))return {t:'mid',f:S.demand.mult.mid};
+  const day=d.getDate(), mon=d.getMonth()+1;
+  // TỰ ĐỘNG: "ngày trùng" = ngày trùng số tháng (1/1, 6/6, 7/7…) → sale lớn (×peak). Có thể thêm ngày lẻ qua peakDates.
+  if(day===mon || inDateList(S.demand.peakDates,day))return {t:'peak',f:S.demand.mult.peak};
+  // TỰ ĐỘNG: ngày 15 & 25 hằng tháng → ×mid. Có thể thêm ngày lẻ qua midDates.
+  if(day===15 || day===25 || inDateList(S.demand.midDates,day))return {t:'mid',f:S.demand.mult.mid};
   return {t:'normal',f:1};
 }
 function dayType(d){ return isClosed(d) ? 'closed' : baseType(d).t; }
