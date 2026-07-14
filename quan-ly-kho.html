@@ -629,8 +629,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.4"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-87 (Phase 3&4: kế hoạch tuyển dụng + đề xuất mở rộng CN/ca tối; tự học tốc độ từ số đo thực + gợi ý KPI công bằng; smoke-test toàn app)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "2.5"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-88 (sửa lỗi biểu đồ ca rỗng khi đội không ai biết Xác nhận: cho khâu không ai biết chạy ở mức sàn để dây chuyền không đứng)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2220,7 +2220,11 @@ function clockOf(ca,min){ const def=ca==='Chiều'?'13:30':'07:30'; let s=(S.con
 // Bám lời giải cân bằng (LP) làm kế hoạch trạm; khâu của mình chưa có hàng -> xuống phụ khâu trước; cân bằng feed (ko nhồi người vượt mức khâu trước nuôi); có mệt mỏi.
 function simWave(mem,N,capMin,crabD,pins,avail){
   const ORDER=S.stages.map(s=>s.key); const iOf=k=>ORDER.indexOf(k); const caH=S.config.caHours||4; const dtH=1/60;
-  const rate0=(p,k)=>(p.skills[k]||0);
+  // Nếu 1 khâu KHÔNG ai trong đội biết làm (skill 0 hết) thì cho làm ở mức "sàn" để dây chuyền không bị đứng
+  // (nhất là Xác nhận — bấm máy, ai cũng làm được). Khâu nào ĐÃ có người biết thì người skill 0 vẫn = 0 (giữ hành vi cũ).
+  const anySkill={}; ORDER.forEach(k=>anySkill[k]=mem.some(p=>!p.boss&&(p.skills[k]||0)>0));
+  const floorFor=k=>{ if(k==='xacnhan'){const s=S.stages.find(x=>x.key===k); return Math.max(FLOOR_RATE,Math.round((s?s.rate:0)*0.3));} return FLOOR_RATE; };
+  const rate0=(p,k)=>{ const v=p.skills[k]||0; if(v>0)return v; return anySkill[k]?0:floorFor(k); };
   const crabPerMin=(S.config.crabRate||30)/caH/60; let crabRem=crabD||0; // 🦀 người rảnh nhảy sang Crabthing (SKU/ca ÷ giờ ÷ 60)
   if(!mem.length||N<=0) return {makespan:0,blocks:{},bnK:ORDER[ORDER.length-1],sStart:{},sEnd:{}};
   const pt=pipelineThroughput(mem.map(p=>Object.assign({},p,{hours:caH})));
