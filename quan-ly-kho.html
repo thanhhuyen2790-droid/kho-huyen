@@ -625,8 +625,8 @@
    CẤU HÌNH CLOUD — dán 2 giá trị từ Supabase vào đây.
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
-const VERSION = "2.8"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-91 (tự động: 15&25 hằng tháng ×hệ số, ngày trùng số tháng (1/1,6/6,7/7) ×hệ số — chỉ còn nhập hệ số, bỏ ô điền ngày)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const VERSION = "3.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
+const BUILD = "v2026.06.10-96 (Chốt Tít cấp NGÀY 3 mốc 11h30·15h·17h30 theo dòng chảy cả ngày + nút đổi mô hình cũ/mới (nút thắt chạy sớm) để so sánh; tự tính số + người + kiểm soát kịp 18h)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -1291,7 +1291,15 @@ function baseType(d){
 function dayType(d){ return isClosed(d) ? 'closed' : baseType(d).t; }
 // đơn Shopee+Tiktok sàn sinh ra trong ngày (Crabthing tách riêng)
 // ĐƠN THỰC TẾ đầu ngày (nếu admin đã nhập): số đơn thực × (1 + % tăng dự kiến) — ghi đè số dự kiến
-function dayEstimate(ds){ const o=S.dayOrders&&S.dayOrders[ds]; if(o&&(+o.actual)>0) return Math.round((+o.actual)*(1+(+o.uplift||0)/100)); return null; }
+// override đơn thực tế THEO CA (mới) — o[ds]={sang:{actual,uplift}, chieu:{actual,uplift}}; giữ tương thích bản cũ o[ds]={actual,uplift} = cả ngày
+function caOv(ds,ca){ const o=S.dayOrders&&S.dayOrders[ds]; if(!o)return null; const key=ca==='Sáng'?'sang':(ca==='Chiều'?'chieu':null); if(!key)return null; const c=o[key]; return (c&&(+c.actual)>0)?c:null; }
+function caEst(ds,ca){ const c=caOv(ds,ca); return c?Math.round((+c.actual)*(1+(+c.uplift||0)/100)):null; }
+function baseDayForecast(ds){ const d=parse(ds); const mi=d.getMonth(); return (S.demand.base.shopee[mi]+S.demand.base.tiktok[mi])*baseType(d).f; }
+function dayEstimate(ds){ const o=S.dayOrders&&S.dayOrders[ds]; if(!o)return null;
+  if((+o.actual)>0) return Math.round((+o.actual)*(1+(+o.uplift||0)/100)); // BẢN CŨ: nhập cả ngày
+  const eS=caEst(ds,'Sáng'), eC=caEst(ds,'Chiều'); if(eS==null&&eC==null)return null;
+  const base=baseDayForecast(ds), am=amShare(); // ca chưa nhập thì lấy theo dự báo gốc
+  return Math.round((eS!=null?eS:base*am)+(eC!=null?eC:base*(1-am))); }
 function rawOrders(d){
   const ov=dayEstimate(fmt(d)); if(ov!=null) return ov; // đã có số thực tế -> dùng luôn (đã gồm cả đơn dồn thực tế)
   const mi=d.getMonth();
@@ -1546,8 +1554,14 @@ function caTarget(N,ca){ if(ca==='Sáng')return N*amShare(); if(ca==='Chiều')r
 function caSlack(t){ return Math.max(t*((S.config.caSlackPct!=null?+S.config.caSlackPct:3)/100), 5); }       // dao động cho phép: ±3% hoặc ≥5 đơn
 function caTargetMin(N,ca){ const t=caTarget(N,ca); return Math.max(0,t-caSlack(t)); }        // ngưỡng tối thiểu để coi là ĐỦ (khỏi thêm người)
 // CHỈ TIÊU LINH ĐỘNG: mặc định 60/40, nhưng ca YẾU (team đăng ký yếu) gánh ko nổi phần của mình -> chuyển bớt sang ca MẠNH. ceilFn(ca)=năng lực tối đa ca đó.
-function adaptiveCaTargets(N, ceilFn){
-  const am=amShare(); let tS=N*am, tC=N*(1-am);
+function adaptiveCaTargets(N, ceilFn, ds){
+  const am=amShare();
+  const oS=ds?caEst(ds,'Sáng'):null, oC=ds?caEst(ds,'Chiều'):null;
+  if(oS!=null||oC!=null){ // admin ĐÃ nhập đơn thực tế theo ca -> chốt cứng, ca chưa nhập lấy dự báo gốc, KHÔNG chuyển tải
+    const base=ds?baseDayForecast(ds):N;
+    return {'Sáng':Math.round(oS!=null?oS:base*am), 'Chiều':Math.round(oC!=null?oC:base*(1-am)), 'Tối':0};
+  }
+  let tS=N*am, tC=N*(1-am);
   const cS=ceilFn('Sáng'), cC=ceilFn('Chiều');
   if(tS>cS){ const mv=Math.min(tS-cS, Math.max(0,cC-tC)); tS-=mv; tC+=mv; } // Sáng yếu -> Chiều gánh
   if(tC>cC){ const mv=Math.min(tC-cC, Math.max(0,cS-tS)); tC-=mv; tS+=mv; } // Chiều yếu -> Sáng gánh
@@ -1638,7 +1652,7 @@ const OPT={
     const xn=(si,di,ca)=>`x_${si}_${di}_${ca}`;
     days.forEach((day,di)=>Object.keys(day.avail).forEach(si=>day.avail[si].forEach(ca=>V(xn(si,di,ca),0,1,true))));
     // chỉ tiêu LINH ĐỘNG mỗi ngày (ca mạnh gánh ca yếu) — MILP là mô hình trọn gói nên ceil theo Σ prod
-    days.forEach(day=>{ const ceil=ca=>{const cc=ca==='Sáng'?'S':'C'; let s=0; Object.keys(day.avail).forEach(si=>{ if(day.avail[si].includes(cc))s+=prodOf(+si)*H; }); return s;}; day.T=adaptiveCaTargets(day.orders, ceil); });
+    days.forEach(day=>{ const ceil=ca=>{const cc=ca==='Sáng'?'S':'C'; let s=0; Object.keys(day.avail).forEach(si=>{ if(day.avail[si].includes(cc))s+=prodOf(+si)*H; }); return s;}; day.T=adaptiveCaTargets(day.orders, ceil, day.ds); });
     // (1) năng lực mỗi ca >= chỉ tiêu ca (đã trừ dao động cho phép)
     days.forEach((day,di)=>['S','C'].forEach(ca=>{ const terms=[]; Object.keys(day.avail).forEach(si=>{ if(day.avail[si].includes(ca))terms.push([prodOf(+si)*H, xn(si,di,ca)]); });
       if(!terms.length)return; const tt=day.T[ca==='S'?'Sáng':'Chiều']; const sc=V(`sCap_${di}_${ca}`,0,null,false); terms.push([1,sc]); cons.push({name:`cap_${di}_${ca}`,terms,op:'>=',rhs:Math.max(0,tt-caSlack(tt))}); obj.push([W.cap,sc]); }));
@@ -1707,7 +1721,7 @@ const OPT={
       const plan={'Sáng':[],'Chiều':[]};
       const candOf=ca=>staffArr.filter(s=>!rested.includes(s.id)&&(reg[s.id]||[]).includes(ca));
       const ceil=ca=>useChain()?chainCap(teamOf(candOf(ca))):candOf(ca).reduce((a,s)=>a+this.prodOf(s)*H,0); // năng lực tối đa ca
-      const T=adaptiveCaTargets(orders, ceil); // chỉ tiêu linh động: ca mạnh gánh cho ca yếu
+      const T=adaptiveCaTargets(orders, ceil, ds); // chỉ tiêu linh động: ca mạnh gánh cho ca yếu (+ đơn thực tế theo ca)
       ['Sáng','Chiều'].forEach(ca=>{ const cand=candOf(ca); const t=T[ca];
         plan[ca]=this.minCover(cand, Math.max(0,t-caSlack(t)), stages, slowKeys, H, acc); });
       const worked={}; ['Sáng','Chiều'].forEach(ca=>plan[ca].forEach(id=>worked[id]=(worked[id]||0)+1));
@@ -1737,7 +1751,7 @@ const OPT={
     this.last={engine:'HiGHS',ms:Date.now()-t0}; return true;
   }
 };
-function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
+function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick, ds){
   trainMap=trainMap||{};
   const caH=S.config.caHours;
   const pr=p=>Math.max(0,(p.prod>0?+p.prod:(S.config.prod||20))); // TRỌN GÓI đơn/h — lấy trực tiếp từ bảng Nhân sự
@@ -1757,8 +1771,8 @@ function selectDay(N, crabD, pool, acc, trainMap, busy, forcedPick){
   // CHỈ TIÊU LINH ĐỘNG: ca nào team đăng ký mạnh hơn thì gánh nhiều đơn hơn (mặc định 60/40, ca yếu chuyển bớt sang ca mạnh)
   const caPoolTeam=ca=>pool.filter(p=>p.caList.includes(ca)).map(p=>({...p,hours:caH,skills:boostSkills(p)}));
   const caCeil=ca=>useChain()?chainCap(caPoolTeam(ca)):caPoolTeam(ca).reduce((a,p)=>a+pr(p)*caH,0); // năng lực TỐI ĐA ca (dùng hết người đăng ký)
-  const _adT=adaptiveCaTargets(N, caCeil);
-  const tgt=ca=>_adT[ca]||0;                            // chỉ tiêu ca đã linh động
+  const _adT=adaptiveCaTargets(N, caCeil, ds);
+  const tgt=ca=>_adT[ca]||0;                            // chỉ tiêu ca đã linh động (ưu tiên đơn thực tế theo ca nếu có)
   const tgtMin=ca=>{ const t=tgt(ca); return Math.max(0,t-caSlack(t)); };
   const workCount=p=>(inca('Sáng',p)?1:0)+(inca('Chiều',p)?1:0); // số ca đã xếp cho người này hôm nay
   const uncoveredIn=(ca,cand)=>S.stages.filter(s=>!pick[ca].some(p=>(p.skills[s.key]||0)>0)&&cand.some(p=>(p.skills[s.key]||0)>0)).map(s=>s.key);
@@ -1893,7 +1907,7 @@ function planDay(d, acc){
   // NGÀY ĐÔNG: đỉnh / 15-25 / có đơn dồn từ ngày nghỉ -> dồn toàn lực phủ khâu, lót khâu yếu
   const busy = (t==='peak'||t==='mid') || rolledOrders(d)>0.5;
   const forcedPick = (S.config.useOptimizer!==false && SOLVER_PLAN[ds]) ? SOLVER_PLAN[ds] : null; // kết quả bộ tối ưu (nếu có)
-  let sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick);
+  let sd=selectDay(orders, crabD, pool, acc, trainMap, busy, forcedPick, ds);
   // 👑 TRIỆU HỒI BÀ CHÚA KHO: thiếu ĐƠN trên ngưỡng (mặc định >50 đơn) HOẶC thiếu người làm CRABTHING
   let summon=null, bossCrab=false, bossDeclined=false; const boss=bossStaff();
   const bossOff=!!(S.bossOff&&S.bossOff[ds]); // admin bỏ tích = Bà Chúa Kho bận, KHÔNG tham gia ngày này
@@ -1906,7 +1920,7 @@ function planDay(d, acc){
     if(bossOff){ if(wantOrders||wantCrab)bossDeclined=true; } // bận -> giữ nguyên kịch bản với người hiện có (đã là "thiếu")
     else if(wantOrders){
       summon = skillGap.length ? ('KHÔNG AI biết làm khâu: '+skillGap.map(s=>s.name).join(', ')+' → gọi 👑') : ('thiếu '+Math.round(gap)+' đơn');
-      pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null); // cô ấy gánh ĐƠN full sức + phủ khâu trống skill
+      pool=pool.concat([bossEntry(boss)]); sd=selectDay(orders, crabD, pool, acc, trainMap, true, null, ds); // cô ấy gánh ĐƠN full sức + phủ khâu trống skill
     } else if(wantCrab){
       summon='thiếu người làm Crabthing'; sd.crabShort=false; sd.crabCap=crabD; bossCrab=true;             // ngày đủ đơn -> boss làm crab cả 2 ca cho đủ
     }
@@ -2229,8 +2243,14 @@ function simWave(mem,N,capMin,crabD,pins,avail){
   // XÁC NHẬN TRƯỚC: chỉ sau confT (tối đa 15') mới mở các khâu sau cho nhặt → đầu ca chỉ xác nhận, rồi cả team cùng vào Nhặt
   const xp=mem.filter(p=>!p.boss&&rate0(p,'xacnhan')>0)[0]||mem.find(p=>p.boss&&rate0(p,'xacnhan')>0);
   const xr=xp?rate0(xp,'xacnhan'):0; const confT=xp?Math.min(15,Math.max(1,Math.round(N/xr*60))):15;
-  const openStep=(S.config&&S.config.waveOpenStep!=null?+S.config.waveOpenStep:18); // mở khâu so le: cả team quét tuần tự nhặt→kiểm→bọc→gói (nhịp lớn = sóng rõ)
+  const openStep=(S.config&&S.config.waveOpenStep!=null?+S.config.waveOpenStep:18); // mở khâu so le: cả team quét tuần tự nhặt→kiểm→bọc→gói
   const cur={}; // BÁM TRẠM: khâu phút trước của mỗi người, ưu tiên ở lại nếu còn việc (giảm nhảy lung tung)
+  const lastK=ORDER[ORDER.length-1];
+  // Khâu nghẽn theo TỐC ĐỘ (chậm nhất, bỏ Xác nhận) = "van ra đơn": qua khâu này coi như gần xong. Dùng để đo tiến độ mượt (Tít dồn cuối ca nên không đo Tít).
+  const bnRateK=S.stages.filter(s=>s.key!=='xacnhan').slice().sort((a,b)=>a.rate-b.rate)[0]?.key||lastK;
+  const progOut=[]; // tiến độ đơn đã qua khâu nghẽn theo từng phút
+  const readyK=ORDER.length>=2?ORDER[ORDER.length-2]:lastK; // khâu ngay TRƯỚC Tít (Bịt đầu) = đơn "sẵn sàng Tít"
+  const progReady=[]; // đơn đã sẵn sàng để Tít theo từng phút (để chốt Tít 2 lần/ca)
   let t=0,guard=0;
   while(done[ORDER[ORDER.length-1]]<N-1e-6 && guard++<1800 && (!capMin||t<capMin)){
     const snap=Object.assign({},done);
@@ -2255,6 +2275,7 @@ function simWave(mem,N,capMin,crabD,pins,avail){
     const advK={};
     ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); advK[k]=adv; if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
     mem.forEach(p=>{const k=asg[p.id];if(!k)return; const myr=rate0(p,k)*fatigueFactor(t); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
+    progOut[t]=done[bnRateK]; progReady[t]=done[readyK];
     t++;
   }
   const blocks={}; mem.forEach(p=>{const raw=log[p.id];const m=[];raw.forEach(s=>{const l=m[m.length-1];if(l&&l.k===s.k&&s.from-l.to<=6){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else m.push(Object.assign({},s));});const f=m.filter(s=>s.to-s.from>=5);const g=[];f.forEach(s=>{const l=g[g.length-1];if(l&&l.k===s.k){l.to=s.to;l.ord=(l.ord||0)+(s.ord||0);}else g.push(Object.assign({},s));});
@@ -2272,10 +2293,12 @@ function simWave(mem,N,capMin,crabD,pins,avail){
     fin.forEach(f=>{ if(rem<=1e-6)return; const dur=fillTo-f.end; const can=crabPerMin*dur; const add=Math.min(can,rem); if(add<1)return; rem-=add; const dur2=Math.max(5,Math.min(dur,Math.round(add/crabPerMin))); blocks[f.id].push({k:'crab',from:f.end,to:f.end+dur2,ord:add}); });
   }
   let bnK=ORDER[ORDER.length-1],bnDur=-1; ORDER.forEach(k=>{if(k==='xacnhan')return; if(sStart[k]!=null){const d=(sEnd[k]||t)-sStart[k]; if(d>bnDur){bnDur=d;bnK=k;}}});
-  return {makespan:t,blocks,bnK,sStart,sEnd,doneOrders:Math.round(done[ORDER[ORDER.length-1]])};
+  return {makespan:t,blocks,bnK,sStart,sEnd,doneOrders:Math.round(done[ORDER[ORDER.length-1]]),progOut,bnRateK,progReady,readyK};
 }
 // ===== MODAL KỊCH BẢN: bấm nút -> mở bảng riêng toàn màn hình, xem trọn khung thời gian =====
 const WAVE_CACHE={}; let CUR_WAVE_KEY=null;
+let DAYFLOW_NEW=false; // mô hình dòng chảy ngày: false=cũ (dồn đệm), true=mới (nút thắt chạy sớm) — nút bật/tắt để so sánh
+function toggleDayFlow(){ DAYFLOW_NEW=!DAYFLOW_NEW; renderPlan(); }
 function openWaveModal(key){
   const d=WAVE_CACHE[key]; if(!d)return; CUR_WAVE_KEY=key;
   const wd=['CN','T2','T3','T4','T5','T6','T7']; const ds=key.split('|')[0]; let lbl=ds+' · ca '+d.ca;
@@ -2483,6 +2506,36 @@ function wavePlaybook(cs,ca,ds){
     pinCmp=`<div class="advnote" style="background:#eef6ff;border-color:#bcdcff;color:#1d4e89">✋ <b>Bản PHÂN TAY của bạn</b> ${diff>0?'<b style="color:#0f6e56">TỐT HƠN tự động 👍</b>':(diff<0?'<b style="color:#c0392b">KÉM HƠN tự động</b>':'ngang bản tự động')} → <b style="color:${diff>=0?'#0f6e56':'#c0392b'}">${diff>=0?'+':''}${diff} đơn</b>. <span style="font-weight:400">(đơn hoàn tất trọn 7 khâu trong giờ ca: phân tay ${mOrd} · tự động ${aOrd})</span></div>`;
   }
   const gantt=waveGantt(mem,sim,ca,shiftMin);
+  // ⏱️ TIẾN ĐỘ RA ĐƠN THEO GIỜ (mốc kiểm tra) — đơn đã qua khâu nghẽn ≈ gần hoàn thành
+  const progTbl=(()=>{ const pd=sim.progOut||[]; if(!pd.length||mk<20)return '';
+    const span=Math.max(mk,shiftMin), step=30; const at=m=>{ let i=Math.min(m,pd.length-1); while(i>0&&pd[i]==null)i--; return Math.round(pd[i]||0); };
+    const bnNm=(S.stages.find(s=>s.key===sim.bnRateK)||{}).name||'khâu nghẽn';
+    let prev=0,rows='';
+    for(let m=step;m<=span+0.1;m+=step){ const cum=at(m); const rate=Math.round((cum-prev)/(step/60)); const pctc=chartN>0?Math.round(cum/chartN*100):0; rows+=`<tr><td style="text-align:center">${clk(m)}</td><td style="text-align:center;font-weight:700">${cum}</td><td style="text-align:center">${pctc}%</td><td style="text-align:center">${rate>0?'~'+rate:'–'}</td></tr>`; prev=cum; }
+    return `<div class="whybox"><div style="font-size:12px;color:#444;margin-bottom:5px">Số đơn <b>đã qua khâu nghẽn (${esc(bnNm)})</b> tại từng mốc — coi như gần hoàn thành. <b>Đến giờ đó mà thực tế CHƯA đạt số này là đang chậm tiến độ.</b> (Tít đơn thường dồn cuối ca nên đo ở khâu nghẽn cho sát nhịp ra đơn.)</div>`+
+      `<div class="schedgrid"><table class="catbl"><thead><tr><th>Mốc giờ</th><th>Đã ra (dồn)</th><th>%</th><th>đơn/h khúc này</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  })();
+  // 🏷️ CHỐT TÍT — 2 lần/ca (1 người, ưu tiên người rảnh/mới; đông đơn thì thêm hỗ trợ)
+  const titPlan=(()=>{ const pr=sim.progOut||[]; if(!pr.length||mk<20)return ''; // đo theo đơn đã qua NÚT THẮT (≈ sẵn sàng Tít) cho mượt
+    const readyAt=m=>{let i=Math.min(Math.round(m),pr.length-1);while(i>0&&pr[i]==null)i--;return Math.round(pr[i]||0);};
+    const mid=Math.round(Math.min(mk,shiftMin)/2), end=Math.min(mk,shiftMin);
+    const b1=readyAt(mid), b2=Math.max(0,readyAt(end)-b1);
+    const nonBoss=mem.filter(p=>!p.boss); if(!nonBoss.length)return '';
+    const idle=nonBoss.filter(p=>!(sim.blocks[p.id]||[]).length);
+    const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
+    const titer=(idle.length?idle:nonBoss).slice().sort((a,b)=>sumSk(a)-sumSk(b))[0]; // rảnh / yếu nhất
+    const titFloor=Math.max(FLOOR_RATE,Math.round((S.stages.find(s=>s.key==='tit')||{rate:385}).rate*0.3));
+    const titRate=titer?((titer.skills&&titer.skills['tit'])||titFloor):titFloor;
+    const tmin=b=>titRate>0?Math.round(b/titRate*60):0;
+    const cutBusy=!idle.length; const nmT=titer?esc(titer.name):'—';
+    return `<div class="whybox"><div style="font-size:12px;color:#444;margin-bottom:5px">Tít = thao tác "đóng dấu XONG" cuối cùng — <b>chốt 2 lần/ca</b> do <b>1 người</b> làm. Tít dễ (ai cũng làm được, kể cả người mới) nên ưu tiên người <b>rảnh/yếu nhất</b>, không rút người khỏi dây chuyền.</div>`+
+      `<div class="wy">🏷️ <b>Chốt Tít #1 — giữa ca (~${clk(mid)}):</b> tít ~<b>${b1}</b> đơn · người: <b>${nmT}</b> (~${tmin(b1)}')</div>`+
+      `<div class="wy">🏷️ <b>Chốt Tít #2 — cuối ca (~${clk(end)}):</b> tít ~<b>${b2}</b> đơn · người: <b>${nmT}</b> (~${tmin(b2)}')</div>`+
+      `<div class="wy" style="color:#1d4e89">→ <b>Đối chiếu thực tế:</b> đến mốc mà số Tít đếm được CHƯA đạt số này là <b>đang chậm</b> — chủ động cắt/điều thêm người.</div>`+
+      (b1<Math.max(10,b2*0.25)?`<div class="wy" style="color:#8a6500">ℹ️ Chốt #1 giữa ca thấp vì <b>dây chuyền cần thời gian "mồi đầy"</b> (nhặt→kiểm→bọc→gói) + khâu nghẽn Gói hộp chậm → đơn ra chủ yếu về nửa sau ca. Đây là <b>giới hạn thật</b> (không phải lỗi). Muốn ra đơn sớm hơn: đào tạo/thêm người ở Gói hộp để nút thắt chạy nhanh &amp; sớm hơn.</div>`:'')+
+      (cutBusy?`<div class="wy" style="color:#c0392b">⚠️ Team đang kín việc — <b>nên bổ sung 1 người hỗ trợ để Tít</b> (việc dễ, người mới làm được), tránh rút <b>${nmT}</b> khỏi dây chuyền.</div>`:'')+
+    `</div>`;
+  })();
   // bản chữ (thu gọn) cho ai cần giờ chính xác — người giỏi lên trên
   const sumSk2=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const works2=(p,k)=>(sim.blocks[p.id]||[]).some(x=>x.k===k);
@@ -2596,6 +2649,8 @@ function wavePlaybook(cs,ca,ds){
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
     `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút, số đơn trên từng khối:</div>`+
     gantt+ gapLines+
+    (progTbl?`<details class="whysec" open><summary>⏱️ Tiến độ ra đơn theo giờ (mốc kiểm tra)</summary>${progTbl}</details>`:'')+
+    (titPlan?`<details class="whysec" open><summary>🏷️ Chốt Tít — 2 lần/ca (giữa ca + cuối ca)</summary>${titPlan}</details>`:'')+
     `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand);font-weight:700">▸ Cách điều phối người (đọc là hiểu quy trình)</summary>${coordTxt}`+
       `<details style="margin-top:6px"><summary style="font-size:12px;cursor:pointer;color:var(--muted)">▸ Giờ chi tiết từng người</summary>${rowsTxt}</details></details>`+
     `<div class="wnote">⚙️ Đầu ca Bà Chúa Kho xác nhận, rồi cả team dồn <b>Nhặt</b> và lần lượt quét sang Kiểm → Bọc → Gói hộp; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. ${finishLine} <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
@@ -2627,6 +2682,38 @@ function otEstimate(r){
   const otMin=rateH>0?Math.round(shortfall/rateH*60):0;
   const finM=closeH*60+otMin; const fh=Math.floor(finM/60),fm=finM%60;
   return `<div class="metric" style="color:#c0392b;font-weight:600">⏰ Khả năng <b>phải ở lại muộn</b>: thiếu ~${Math.round(shortfall)} đơn → dự kiến xong ~<b>${fh}h${fm<10?'0'+fm:fm}</b> (trễ ~${otMin}' so ${closeH}h), <b>cả team OT</b>. Cách bù xem ở kịch bản &amp; đề xuất bên dưới.</div>`;
+}
+// 🏷️ CHỐT TÍT TRONG NGÀY — mô hình dòng chảy cả ngày (WIP vắt qua trưa), 3 mốc cố định 11h30·15h·17h30
+// Phần mềm tự tính số Tít nên đạt tại mỗi mốc + tự chọn người + kiểm soát "kịp 18h không". Có nút đổi mô hình cũ/mới để so sánh.
+function dayTitPanel(r){
+  if(!r||r.type==='closed'||!r.caStat)return '';
+  const caH=S.config.caHours||4; const N=Math.round(r.orders); if(N<=0)return '';
+  const memOf=ca=>((r.caStat[ca]&&r.caStat[ca].members)||[]).map(p=>Object.assign({},p,{hours:caH}));
+  const mM=memOf('Sáng'), mA=memOf('Chiều'); if(!mM.length&&!mA.length)return '';
+  const Rm=mM.length?pipelineThroughput(mM).cap/caH:0, Ra=mA.length?pipelineThroughput(mA).cap/caH:(Rm); // đơn/h ở khâu nghẽn
+  const isNew=!!DAYFLOW_NEW;
+  const warmM=isNew?90:150, warmA=isNew?15:120; // mới: nút thắt chạy sớm -> mồi nhanh; chiều đã có WIP nên khởi động nhanh
+  const clkD=m=>{const b=7*60+30+Math.round(m);return Math.floor(b/60)+'h'+String(b%60).padStart(2,'0');};
+  const noon=270, aStart=360+warmA, close=630; // 12h · (13h30+mồi) · 18h  (gốc 7h30=0)
+  const mMax=Math.max(0,Rm*(noon-warmM)/60); // đơn tối đa buổi sáng ra được
+  const cum=t=>{ const mOut=t>warmM?Math.min(Rm*(Math.min(t,noon)-warmM)/60, mMax):0; const aOut=t>aStart?Ra*(t-aStart)/60:0; return Math.min(N, Math.max(0,mOut)+Math.max(0,aOut)); };
+  let fin=warmM; while(fin<780 && cum(fin)<N-0.5)fin+=5;
+  const sumSk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
+  const weak=arr=>arr.length?arr.slice().sort((a,b)=>sumSk(a)-sumSk(b))[0]:null;
+  const titM=weak(mM), titA=weak(mA);
+  const marks=[240,450,600]; // 11h30 · 15h · 17h30
+  const rows=marks.map((t,i)=>{ const cH=Math.round(cum(t)), prev=i?Math.round(cum(marks[i-1])):0, batch=Math.max(0,cH-prev);
+    const remain=Math.max(0,N-cH), remH=Math.max(0,(close-t)/60), need=remH>0?Math.round(remain/remH):(remain>0?999:0);
+    const titer=(i===0?titM:titA)||titM||titA; const capNow=Math.max(Rm,Ra);
+    const late=remain>0 && need>capNow+1;
+    return `<div class="wy">🏷️ <b>Mốc ${i+1} — ${clkD(t)}:</b> nên đã Tít ~<b>${cH}</b> đơn <span class="hint">(lô này ~${batch})</span> · người Tít: <b>${titer?esc(titer.name):'— cần thêm hỗ trợ'}</b>. ${remain>0?`Còn <b>${remain}</b> đơn / ${remH.toFixed(1)}h → cần ~<b>${need}</b> đơn/h ${late?'<b style="color:#c0392b">⚠️ sẽ trễ — thêm người / OT / giãn đơn ưu tiên thấp</b>':'<span style="color:#0f6e56">(kịp)</span>'}`:'<span style="color:#0f6e56">✓ đã đủ</span>'}</div>`;
+  }).join('');
+  return `<div class="daform" style="border-color:#e8a;background:#fff5f8">
+    <div class="daform-h">🏷️ Chốt Tít trong ngày — 3 mốc kiểm soát <button class="btn ${isNew?'':'ghost'} sm" style="margin-left:8px" onclick="toggleDayFlow()">${isNew?'⚡ Mô hình MỚI: nút thắt chạy sớm':'Mô hình cũ (dồn đệm)'} · bấm đổi</button></div>
+    <div class="hint" style="margin-bottom:6px">Phần mềm tự tính <b>số Tít nên đạt</b> tại mỗi mốc (theo năng lực team hôm nay) &amp; tự chọn người Tít — anh <b>đếm thực tế rồi so</b> để biết đang đúng/nhanh/chậm. Tốc độ ra đơn ~${Math.round(Math.max(Rm,Ra))} đơn/h (khâu nghẽn).</div>
+    ${rows}
+    <div class="wy" style="color:#1d4e89">⏱️ Dự kiến xong cả <b>${N}</b> đơn lúc ~<b>${clkD(fin)}</b> ${fin>close?`<b style="color:#c0392b">(trễ ${Math.round(fin-close)}' so 18h → OT)</b>`:'<span style="color:#0f6e56">(trước 18h)</span>'}.</div>
+  </div>`;
 }
 function toggleBossOff(ds){
   S.bossOff=S.bossOff||{};
@@ -2784,6 +2871,7 @@ function renderWeekView(){
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       ${otEstimate(r)}
       <div class="caRow">${caSection}</div>
+      ${dayTitPanel(r)}
       ${stagesHtml}
       ${crabWarn}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
@@ -2968,19 +3056,35 @@ function renderAll(){
 // ===== ĐIỀN NHANH ĐƠN THỰC TẾ ĐẦU NGÀY (gắn trong chi tiết từng ngày) =====
 function dayActualForm(r){
   const ds=fmt(r.d); const o=(S.dayOrders||{})[ds]||{};
-  const a=(o.actual!=null&&o.actual!=='')?o.actual:''; const u=(o.uplift!=null&&o.uplift!=='')?o.uplift:'';
-  const has=(+o.actual)>0;
+  const oldWhole=(+o.actual)>0; // dữ liệu bản cũ (cả ngày)
+  const row=(ca,label)=>{ const c=(caOv(ds,ca)||{}); const a=(c.actual!=null&&c.actual!=='')?c.actual:''; const u=(c.uplift!=null&&c.uplift!=='')?c.uplift:''; const est=caEst(ds,ca);
+    const key=ca==='Sáng'?'sang':'chieu';
+    return `<div class="daform-row" style="align-items:flex-end">
+      <div style="min-width:64px;font-weight:600;font-size:12.5px;padding-bottom:6px">${label}</div>
+      <div><label class="fld" style="margin:0 0 2px">Đơn thực tế</label><input id="da-${key}-a-${ds}" type="number" min="0" value="${a}" style="max-width:110px" placeholder="vd 480"></div>
+      <div><label class="fld" style="margin:0 0 2px">% tăng dự kiến</label><input id="da-${key}-u-${ds}" type="number" min="0" value="${u}" style="max-width:110px" placeholder="vd 20"></div>
+      ${est!=null?`<span class="hint" style="padding-bottom:6px">→ dùng <b style="color:var(--brand)">${est}</b> đơn</span>`:''}
+    </div>`; };
+  const anyCa=caOv(ds,'Sáng')||caOv(ds,'Chiều');
   return `<div class="daform">
-    <div class="daform-h">📲 Cập nhật đơn thực tế đầu ngày${has?` <span class="pill" style="color:var(--brand)">đang dùng ${dayEstimate(ds)} đơn</span>`:''}</div>
-    <div class="daform-row">
-      <div><label class="fld" style="margin:0 0 2px">Đơn thực tế</label><input id="da-actual-${ds}" type="number" min="0" value="${a}" style="max-width:120px" placeholder="vd 605"></div>
-      <div><label class="fld" style="margin:0 0 2px">% tăng dự kiến</label><input id="da-uplift-${ds}" type="number" min="0" value="${u}" style="max-width:120px" placeholder="vd 20"></div>
-      <button class="btn sm" onclick="saveDayActual('${ds}')">Lưu</button>
-      ${has?`<button class="btn ghost sm" onclick="clearDayOrders('${ds}')">Xoá</button>`:''}
+    <div class="daform-h">📲 Cập nhật đơn thực tế đầu ngày — <b>theo từng ca</b>${(anyCa||oldWhole)?` <span class="pill" style="color:var(--brand)">cả ngày ≈ ${dayEstimate(ds)} đơn</span>`:''}</div>
+    ${oldWhole?`<div class="hint" style="color:#c0392b;margin-bottom:4px">⚠️ Đang dùng số CẢ NGÀY kiểu cũ (${o.actual}). Nhập theo ca bên dưới rồi Lưu để chuyển sang chia theo ca.</div>`:''}
+    ${row('Sáng','☀️ Sáng')}
+    ${row('Chiều','🌤️ Chiều')}
+    <div class="daform-row" style="margin-top:4px">
+      <button class="btn sm" onclick="saveDayActual('${ds}')">Lưu (theo ca)</button>
+      ${(anyCa||oldWhole)?`<button class="btn ghost sm" onclick="clearDayOrders('${ds}')">Xoá, về dự báo</button>`:''}
+      <span class="hint" style="align-self:center">Chỉ nhập ca nào biết số; ca kia tự dùng dự báo. Chỉ tiêu từng ca sẽ theo đúng số này để chia người.</span>
     </div>
   </div>`;
 }
-function saveDayActual(ds){ const a=Math.max(0,+((document.getElementById('da-actual-'+ds)||{}).value)||0); const u=Math.max(0,+((document.getElementById('da-uplift-'+ds)||{}).value)||0); if(a<=0){alert('Nhập số đơn thực tế (>0).');return;} S.dayOrders=S.dayOrders||{}; S.dayOrders[ds]={actual:a,uplift:u}; saveAll(); renderAll(); }
+function saveDayActual(ds){
+  const rd=(ca)=>{const key=ca==='Sáng'?'sang':'chieu'; const a=Math.max(0,+((document.getElementById('da-'+key+'-a-'+ds)||{}).value)||0); const u=Math.max(0,+((document.getElementById('da-'+key+'-u-'+ds)||{}).value)||0); return a>0?{actual:a,uplift:u}:null;};
+  const s=rd('Sáng'), c=rd('Chiều');
+  if(!s&&!c){alert('Nhập số đơn thực tế (>0) cho ít nhất một ca.');return;}
+  S.dayOrders=S.dayOrders||{}; const obj={}; if(s)obj.sang=s; if(c)obj.chieu=c; S.dayOrders[ds]=obj; // bỏ định dạng cũ (actual cả ngày)
+  saveAll(); renderAll();
+}
 function clearDayOrders(ds){ if(S.dayOrders)delete S.dayOrders[ds]; saveAll(); renderAll(); }
 function renderDayOrders(){}
 // nạp dữ liệu cloud (nếu có) rồi mở app
