@@ -626,7 +626,7 @@
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
 const VERSION = "3.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-96 (Chốt Tít cấp NGÀY 3 mốc 11h30·15h·17h30 theo dòng chảy cả ngày + nút đổi mô hình cũ/mới (nút thắt chạy sớm) để so sánh; tự tính số + người + kiểm soát kịp 18h)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-97 (Chốt Tít vẽ THẲNG lên biểu đồ: 1 người tự chọn tít theo lô tại mốc cố định — Sáng 11h30 · Chiều 15h & 17h30 (3 mốc/ngày); công tắc bật/tắt Mô hình cũ/mới ngay trên biểu đồ; bỏ bảng 30 phút & mục tít cũ cho gọn)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2299,6 +2299,7 @@ function simWave(mem,N,capMin,crabD,pins,avail){
 const WAVE_CACHE={}; let CUR_WAVE_KEY=null;
 let DAYFLOW_NEW=false; // mô hình dòng chảy ngày: false=cũ (dồn đệm), true=mới (nút thắt chạy sớm) — nút bật/tắt để so sánh
 function toggleDayFlow(){ DAYFLOW_NEW=!DAYFLOW_NEW; renderPlan(); }
+function toggleWaveModel(){ DAYFLOW_NEW=!DAYFLOW_NEW; if(CUR_WAVE_KEY)openWaveModal(CUR_WAVE_KEY); }
 function openWaveModal(key){
   const d=WAVE_CACHE[key]; if(!d)return; CUR_WAVE_KEY=key;
   const wd=['CN','T2','T3','T4','T5','T6','T7']; const ds=key.split('|')[0]; let lbl=ds+' · ca '+d.ca;
@@ -2505,6 +2506,32 @@ function wavePlaybook(cs,ca,ds){
     const aOrd=within(null), mOrd=within(pins); const diff=mOrd-aOrd;
     pinCmp=`<div class="advnote" style="background:#eef6ff;border-color:#bcdcff;color:#1d4e89">✋ <b>Bản PHÂN TAY của bạn</b> ${diff>0?'<b style="color:#0f6e56">TỐT HƠN tự động 👍</b>':(diff<0?'<b style="color:#c0392b">KÉM HƠN tự động</b>':'ngang bản tự động')} → <b style="color:${diff>=0?'#0f6e56':'#c0392b'}">${diff>=0?'+':''}${diff} đơn</b>. <span style="font-weight:400">(đơn hoàn tất trọn 7 khâu trong giờ ca: phân tay ${mOrd} · tự động ${aOrd})</span></div>`;
   }
+  // ===== 🏷️ CHỐT TÍT THEO MỐC CỐ ĐỊNH — vẽ thẳng lên biểu đồ =====
+  // Sáng: 1 mốc 11h30 · Chiều: 2 mốc 15h & 17h30  (tổng 3 mốc/ngày). Tự chọn 1 người + tự tính số theo năng lực hôm nay.
+  // Nút thắt chạy sớm (mô hình MỚI) => coi dây chuyền mồi sớm hơn ~1h => tới mốc đã có nhiều đơn để tít hơn.
+  const caStartMin=(()=>{ const def=ca==='Chiều'?'13:30':'07:30'; const s=String((S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def).split(':'); return (+s[0]||0)*60+(+s[1]||0); })();
+  const mForClk=(h,mm)=>Math.max(0,Math.min(shiftMin,(h*60+mm)-caStartMin));
+  const titMarks=(ca==='Chiều'?[[15,0],[17,30]]:[[11,30]]).map(([h,mm])=>({h,mm,m:mForClk(h,mm)}));
+  const _nb=mem.filter(p=>!p.boss); const _sk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
+  const _idle=_nb.filter(p=>!(sim.blocks[p.id]||[]).length);
+  const titer=(_idle.length?_idle:_nb).slice().sort((a,b)=>_sk(a)-_sk(b))[0]||null; // rảnh / yếu nhất
+  const cutBusy=!_idle.length; // team kín việc -> nên thêm 1 người hỗ trợ tít
+  let titLines=[];
+  if(titer && (sim.progOut||[]).length && mk>=20){
+    const pr=sim.progOut, warmShift=DAYFLOW_NEW?60:0;
+    const readyAt=m=>{let i=Math.min(Math.round(m)+warmShift,pr.length-1);while(i>0&&pr[i]==null)i--;return Math.round(pr[i]||0);};
+    const titRate=(titer.skills&&titer.skills['tit'])||Math.max(FLOOR_RATE,Math.round((S.stages.find(s=>s.key==='tit')||{rate:385}).rate*0.3));
+    mem.forEach(p=>{ if(sim.blocks[p.id]) sim.blocks[p.id]=sim.blocks[p.id].filter(b=>b.k!=='tit'); }); // gỡ tít rải rác -> chỉ 1 người tít theo lô
+    let prevR=0;
+    titMarks.forEach(tm=>{ const cum=readyAt(tm.m); const batch=Math.max(0,cum-prevR); prevR=cum;
+      const dur=Math.max(6,Math.min(shiftMin-tm.m+40,titRate>0?Math.round(batch/titRate*60):20));
+      if(batch>=1){ (sim.blocks[titer.id]=sim.blocks[titer.id]||[]).push({k:'tit',from:tm.m,to:tm.m+dur,ord:batch}); }
+      titLines.push({clk:clockOf(ca,tm.m),batch}); });
+  }
+  const titMarkLine = titer && titLines.length
+    ? `<div class="wstep" style="font-size:12.5px;background:#fff5f8;border:1px solid #f0c8da;margin-top:4px">🏷️ <b>Chốt Tít trong ca</b> — 1 người tự chọn: <b>${esc(titer.name)}</b> → ${titLines.map(x=>`<b>${x.clk}</b> tít ~<b>${x.batch}</b> đơn`).join(' &nbsp;·&nbsp; ')}. <span class="hint">Máy tự tính số theo năng lực hôm nay — anh đếm Tít thực tế rồi so: thấp hơn = đang chậm.${cutBusy?' <b style="color:#c0392b">Team kín việc → nên thêm 1 người hỗ trợ tít.</b>':''}</span></div>`
+    : '';
+  const modelSw = `<div class="wstep" style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:12.5px;background:#eef4ff;border:1px solid #cfe0ff;margin-top:4px"><b>Mô hình dòng chảy:</b><label class="mdsw" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" ${DAYFLOW_NEW?'checked':''} onchange="toggleWaveModel()"> <span>${DAYFLOW_NEW?'⚡ MỚI — nút thắt chạy sớm':'Cũ — dồn đệm cuối ca'}</span></label><span class="hint">Công tắc bật/tắt để so sánh: mô hình mới coi dây chuyền mồi sớm hơn → số Tít mỗi mốc cao hơn.</span></div>`;
   const gantt=waveGantt(mem,sim,ca,shiftMin);
   // ⏱️ TIẾN ĐỘ RA ĐƠN THEO GIỜ (mốc kiểm tra) — đơn đã qua khâu nghẽn ≈ gần hoàn thành
   const progTbl=(()=>{ const pd=sim.progOut||[]; if(!pd.length||mk<20)return '';
@@ -2647,10 +2674,9 @@ function wavePlaybook(cs,ca,ds){
     earlySec+
     `<details class="pinsec"${usePins?' open':''}><summary>✋ Phân tay — tự ghim người vào khâu</summary>${pinPanel}</details>`+
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
-    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút, số đơn trên từng khối:</div>`+
+    modelSw+ titMarkLine+
+    `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút; khối <b>✅ Tít</b> = lô chốt tại mốc:</div>`+
     gantt+ gapLines+
-    (progTbl?`<details class="whysec" open><summary>⏱️ Tiến độ ra đơn theo giờ (mốc kiểm tra)</summary>${progTbl}</details>`:'')+
-    (titPlan?`<details class="whysec" open><summary>🏷️ Chốt Tít — 2 lần/ca (giữa ca + cuối ca)</summary>${titPlan}</details>`:'')+
     `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand);font-weight:700">▸ Cách điều phối người (đọc là hiểu quy trình)</summary>${coordTxt}`+
       `<details style="margin-top:6px"><summary style="font-size:12px;cursor:pointer;color:var(--muted)">▸ Giờ chi tiết từng người</summary>${rowsTxt}</details></details>`+
     `<div class="wnote">⚙️ Đầu ca Bà Chúa Kho xác nhận, rồi cả team dồn <b>Nhặt</b> và lần lượt quét sang Kiểm → Bọc → Gói hộp; người mạnh neo ở nút thắt <b>${stN(bnK)}</b>; ai xong khâu trước thì xuống phụ khâu đang nghẽn. ${finishLine} <i>Đã tính mệt mỏi cuối ca; thời gian ước theo skill đang nhập.</i></div>`+
@@ -2871,7 +2897,6 @@ function renderWeekView(){
       ${r.type!=='closed'?(()=>{const chainOn=useChain();const capM=Math.round(r.ord.capacityMain!=null?r.ord.capacityMain:r.ord.capacity);const met=capM>=r.orders-caSlack(r.orders)-1e-6;const dual=chainOn?` <span class="pill" title="Σ trọn gói từng người — đối chiếu">Σ trọn gói ${Math.round(r.ord.capacity)}</span>`:'';return `<div class="metric" style="font-weight:600">📊 Cả ngày: Năng lực ${chainOn?'dây chuyền ':''}<b style="color:${met?'var(--ok)':'var(--bad)'}">${capM}</b> / Chỉ tiêu <b>${Math.round(r.orders)}</b> đơn → ${met?'<span style="color:var(--ok)">ĐẠT</span>':'<span style="color:var(--bad)">THIẾU '+Math.round(r.orders-capM)+'</span>'}${dual}</div>`;})():''}
       ${otEstimate(r)}
       <div class="caRow">${caSection}</div>
-      ${dayTitPanel(r)}
       ${stagesHtml}
       ${crabWarn}
       <div class="sug ${r.status==='ok'?'':r.status}">${r.sug}</div>
