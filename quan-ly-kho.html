@@ -591,7 +591,16 @@
         <div><label class="fld">Tên quản lý (mật danh: Bà Chúa Kho)</label><input id="cf-boss-name" type="text" onchange="S.config.bossName=this.value||'Bùi Thanh Huyền';saveAll();renderAll()"><small class="hint">Full skill = 2× chuẩn mọi khâu · KHÔNG nằm trong danh sách nhân sự</small></div>
         <div><label class="fld">Gọi khi thiếu trên (đơn)</label><input id="cf-boss-thr" type="number" step="5" min="0" onchange="S.config.bossGap=Math.max(0,+this.value||50);saveAll();renderAll()"><small class="hint">Sau phân bổ còn thiếu quá số ĐƠN này thì triệu hồi (mặc định 50 đơn)</small></div>
       </div>
-      <p class="note" style="margin-top:14px">Năng lực mỗi người ở từng khâu = <b>Tốc độ khâu × (điểm kỹ năng ÷ 10) × số giờ làm</b>. Mỗi đơn phải đi qua hết các khâu, nên <b>khâu chậm/yếu nhất là nút thắt</b>.</p>
+      <div class="row" style="margin-top:8px;background:#f0f4ff;padding:10px;border-radius:10px">
+        <div style="flex-basis:100%;font-weight:600;font-size:12.5px;color:#33456b">🧍 Yếu tố con người (không phải máy) — ảnh hưởng giờ ra đơn thực tế</div>
+        <div style="display:flex;align-items:flex-end"><label style="font-size:12.5px;cursor:pointer;font-weight:600"><input type="checkbox" id="cf-warm-on" onchange="S.config.warmupOn=this.checked;invalidateSolver&&invalidateSolver();saveAll();renderAll()"> 🐢 Bật <b>hệ số khởi động ca</b></label></div>
+        <div><label class="fld">Hiệu suất phút đầu ca (%)</label><input id="cf-warm-start" type="number" step="5" min="20" max="100" onchange="S.config.warmupStartPct=Math.max(20,Math.min(100,+this.value||65));saveAll();renderAll()"><small class="hint">Đầu ca chạy chậm rồi tăng dần. Mặc định 65% — con người cần vào guồng.</small></div>
+        <div><label class="fld">Thời gian vào guồng (phút)</label><input id="cf-warm-min" type="number" step="5" min="0" max="120" onchange="S.config.warmupMin=Math.max(0,Math.min(120,+this.value||45));saveAll();renderAll()"><small class="hint">Sau bấy nhiêu phút thì đạt 100% tốc độ. Tính riêng theo giờ vào của từng người.</small></div>
+        <div style="display:flex;align-items:flex-end"><label style="font-size:12.5px;cursor:pointer;font-weight:600"><input type="checkbox" id="cf-fat-on" onchange="S.config.fatigueOn=this.checked;saveAll();renderAll()"> 😮‍💨 Bật <b>hệ số mệt mỏi cuối ca</b></label></div>
+        <div><label class="fld">Mệt mỏi (% giảm / giờ)</label><input id="cf-fat-pct" type="number" step="0.5" min="0" max="15" onchange="S.config.fatiguePct=Math.max(0,Math.min(15,+this.value||4.5));saveAll();renderAll()"><small class="hint">Càng về cuối ca càng chậm. Mặc định 4.5%/giờ (sàn 75%).</small></div>
+        <div><label class="fld">🎁 Số đội gói hộp tối đa</label><input id="cf-goi-teams" type="number" step="1" min="1" max="5" onchange="S.config.goiTeams=Math.max(1,Math.min(5,+this.value||2));saveAll();renderAll()"><small class="hint">Số người vào hộp song song (đội chính + phụ). Mặc định 2. Ngày sale có thể tăng 3 nếu đủ người biết vào hộp.</small></div>
+      </div>
+      <p class="note" style="margin-top:14px">Năng lực mỗi người ở từng khâu = <b>Tốc độ khâu × (điểm kỹ năng ÷ 10) × số giờ làm</b>. Mỗi đơn phải đi qua hết các khâu, nên <b>khâu chậm/yếu nhất là nút thắt</b>. Giờ ra đơn thực tế còn bị trừ <b>khởi động đầu ca</b> &amp; <b>mệt mỏi cuối ca</b>.</p>
       </div></details>
       <details class="setSec"><summary>⏱️ Tốc độ xử lý từng khâu</summary>
       <div class="setBody">
@@ -626,7 +635,7 @@
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
 const VERSION = "3.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-97 (Chốt Tít vẽ THẲNG lên biểu đồ: 1 người tự chọn tít theo lô tại mốc cố định — Sáng 11h30 · Chiều 15h & 17h30 (3 mốc/ngày); công tắc bật/tắt Mô hình cũ/mới ngay trên biểu đồ; bỏ bảng 30 phút & mục tít cũ cho gọn)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-100 (Hệ số KHỞI ĐỘNG CA (mặc định 65%→100% sau 45', theo giờ vào từng người) + giới hạn SỐ ĐỘI GÓI đúng thực tế (mặc định 2 = chính+phụ, chỉnh 1-5 ở Cài đặt) → giờ ra đơn & tít sát thực tế; cạnh hệ số mệt mỏi)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -655,7 +664,7 @@ function defaultSkills(){const o={};(window.S&&S.stages||DEF_STAGES).forEach(s=>
 
 function defaultState(){
   return {
-    config:{prod:20,kpiPerHour:25,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5,fatigueOn:true,fatiguePct:4.5,caStartSang:'07:30',caStartChieu:'13:30'},
+    config:{prod:20,kpiPerHour:25,caHours:4,fullDay:2,sundayOff:true,crabRate:30,trainAssist:0.35,amShare:60,caSlackPct:3,sizingModel:'chain',chainBuffer:0,bossEnabled:true,bossName:'Bùi Thanh Huyền',bossGap:50,crabHelpHours:0.5,fatigueOn:true,fatiguePct:4.5,warmupOn:true,warmupStartPct:65,warmupMin:45,goiTeams:2,caStartSang:'07:30',caStartChieu:'13:30'},
     stages:DEF_STAGES.map(s=>({...s})),
     staff:[
       {id:id(),name:'Hằng',type:'FT',prod:20,active:true,skills:defaultSkills()},
@@ -2224,11 +2233,14 @@ function renderMonthView(){
 // KỊCH BẢN SÓNG: hướng dẫn luân chuyển người theo thời gian trong 1 ca (đầu ca cả team nhặt -> tràn dần xuống, dồn vào khâu nghẽn)
 // hệ số MỆT MỎI cuối ca (đầu ca 1.0, giảm dần theo giờ)
 function fatigueFactor(min){ if(S.config&&S.config.fatigueOn===false)return 1; const pph=(S.config&&S.config.fatiguePct!=null?+S.config.fatiguePct:4.5)/100; return Math.max(0.75,1-pph*(min/60)); }
+// 🐢 HỆ SỐ KHỞI ĐỘNG CA: con người không như máy — đầu ca (hoặc vừa vào ca) hiệu suất thấp, tăng dần tới 100% sau rampMin phút.
+// min = số phút KỂ TỪ KHI NGƯỜI ĐÓ VÀO CA (không phải từ đầu ca chung), để người vào muộn cũng có độ trễ khởi động riêng.
+function warmupFactor(min){ if(S.config&&S.config.warmupOn===false)return 1; const startEff=(S.config&&S.config.warmupStartPct!=null?+S.config.warmupStartPct:65)/100; const rampMin=(S.config&&S.config.warmupMin!=null?+S.config.warmupMin:45); if(min>=rampMin||rampMin<=0)return 1; return startEff+(1-startEff)*(Math.max(0,min)/rampMin); }
 // quy phút-từ-đầu-ca -> giờ đồng hồ theo giờ bắt đầu ca
 function clockOf(ca,min){ const def=ca==='Chiều'?'13:30':'07:30'; let s=(S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def; const pr=String(s).split(':'); let tot=(+pr[0]||0)*60+(+pr[1]||0)+Math.round(min); tot=((tot%1440)+1440)%1440; const H=Math.floor(tot/60),M=tot%60; return H+'h'+(M<10?'0'+M:M); }
 // ===== MÔ PHỎNG SÓNG TỪNG PHÚT (Discrete Event Sim): ai làm gì, bao lâu, khi nào chuyển khâu =====
 // Bám lời giải cân bằng (LP) làm kế hoạch trạm; khâu của mình chưa có hàng -> xuống phụ khâu trước; cân bằng feed (ko nhồi người vượt mức khâu trước nuôi); có mệt mỏi.
-function simWave(mem,N,capMin,crabD,pins,avail){
+function simWave(mem,N,capMin,crabD,pins,avail,goiCap){
   const ORDER=S.stages.map(s=>s.key); const iOf=k=>ORDER.indexOf(k); const caH=S.config.caHours||4; const dtH=1/60;
   // Nếu 1 khâu KHÔNG ai trong đội biết làm (skill 0 hết) thì cho làm ở mức "sàn" để dây chuyền không bị đứng
   // (nhất là Xác nhận — bấm máy, ai cũng làm được). Khâu nào ĐÃ có người biết thì người skill 0 vẫn = 0 (giữ hành vi cũ).
@@ -2256,10 +2268,12 @@ function simWave(mem,N,capMin,crabD,pins,avail){
     const snap=Object.assign({},done);
     const WIP=k=>{const i=iOf(k); const openAt=i===0?0:confT+(i-1)*openStep; if(t<openAt)return 0; const up=i===0?N:snap[ORDER[i-1]];return up-snap[k];}; const R=k=>N-snap[k];
     const cap={}; ORDER.forEach(k=>cap[k]=0); const nAt={}; const asg={};
-    const slotMax=k=>k==='xacnhan'?1:1e9; // XÁC NHẬN chỉ 1 người/lúc (1 máy) — muốn đổi người thì người trước xong người sau mới vào
+    // XÁC NHẬN chỉ 1 người/lúc (1 máy). GÓI HỘP: giới hạn số đội song song (goiCap): 1 = kiểu cũ 1 đội; null/lớn = nhiều đội (đội chính + phụ) phá nút thắt.
+    const slotMax=k=>k==='xacnhan'?1:(k==='goihop'&&goiCap?goiCap:1e9);
     const ord=mem.slice().sort((a,b)=>Math.max.apply(null,ORDER.map(k=>rate0(b,k)))-Math.max.apply(null,ORDER.map(k=>rate0(a,k))));
     for(const p of ord){ if(avail&&(avail[p.id]||0)>t)continue; // 🌅 chưa tới giờ vào ca -> chưa được xếp việc
-      const eff=k=>rate0(p,k)*fatigueFactor(t); const room=k=>WIP(k)-cap[k]*dtH>1e-6; const slot=k=>(nAt[k]||0)<slotMax(k);
+      const arr=avail?(avail[p.id]||0):0; const wf=warmupFactor(t-arr); // 🐢 độ trễ khởi động tính từ giờ người này vào ca
+      const eff=k=>rate0(p,k)*fatigueFactor(t)*wf; const room=k=>WIP(k)-cap[k]*dtH>1e-6; const slot=k=>(nAt[k]||0)<slotMax(k);
       const fedOK=k=>{const i=iOf(k); if(i===0)return true; const up=ORDER[i-1]; return R(up)<=1e-6||cap[k]<cap[up]+1e-6;};
       const okK=k=>eff(k)>0&&R(k)>1e-6&&room(k)&&fedOK(k)&&slot(k);
       let pick=null;
@@ -2274,7 +2288,7 @@ function simWave(mem,N,capMin,crabD,pins,avail){
     }
     const advK={};
     ORDER.forEach(k=>{ const adv=Math.min(cap[k]*dtH,Math.max(0,WIP(k))); advK[k]=adv; if(adv>1e-9&&sStart[k]==null)sStart[k]=t; done[k]=snap[k]+adv; if(done[k]>=N-1e-6&&sEnd[k]==null)sEnd[k]=t+1; });
-    mem.forEach(p=>{const k=asg[p.id];if(!k)return; const myr=rate0(p,k)*fatigueFactor(t); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
+    mem.forEach(p=>{const k=asg[p.id];if(!k)return; const arr=avail?(avail[p.id]||0):0; const myr=rate0(p,k)*fatigueFactor(t)*warmupFactor(t-arr); const mo=cap[k]>1e-9?(myr/cap[k])*advK[k]:0; const L=log[p.id];const l=L[L.length-1];if(l&&l.k===k&&l.to===t){l.to=t+1;l.ord=(l.ord||0)+mo;}else L.push({k,from:t,to:t+1,ord:mo});});
     progOut[t]=done[bnRateK]; progReady[t]=done[readyK];
     t++;
   }
@@ -2297,7 +2311,7 @@ function simWave(mem,N,capMin,crabD,pins,avail){
 }
 // ===== MODAL KỊCH BẢN: bấm nút -> mở bảng riêng toàn màn hình, xem trọn khung thời gian =====
 const WAVE_CACHE={}; let CUR_WAVE_KEY=null;
-let DAYFLOW_NEW=false; // mô hình dòng chảy ngày: false=cũ (dồn đệm), true=mới (nút thắt chạy sớm) — nút bật/tắt để so sánh
+let DAYFLOW_NEW=true; // vào hộp: true=nhiều đội gói song song (thực tế) · false=ép 1 đội gói (kiểu cũ, để so sánh)
 function toggleDayFlow(){ DAYFLOW_NEW=!DAYFLOW_NEW; renderPlan(); }
 function toggleWaveModel(){ DAYFLOW_NEW=!DAYFLOW_NEW; if(CUR_WAVE_KEY)openWaveModal(CUR_WAVE_KEY); }
 function openWaveModal(key){
@@ -2499,10 +2513,17 @@ function wavePlaybook(cs,ca,ds){
   const pinKey=(ds||'')+'|'+ca; const pinsRaw=(S.manualPin&&S.manualPin[pinKey])||null;
   const pins=pinsRaw?Object.fromEntries(Object.entries(pinsRaw).filter(([id,k])=>k&&mem.some(p=>p.id===id))):null;
   const usePins=pins&&Object.keys(pins).length>0;
-  const sim=simWave(mem,chartN,null,crabPool,usePins?pins:null,avail); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
+  // 🎁 2 ĐỘI GÓI HỘP: ai biết vào hộp (goihop>0). ≥2 người -> mở nhiều đội song song (đội chính + phụ) phá nút thắt.
+  // Nút mô hình: MỚI (DAYFLOW_NEW=true) = nhiều đội gói (thực tế) · CŨ = ép 1 đội gói để so sánh.
+  const goiPeople=mem.filter(p=>!p.boss&&(p.skills['goihop']||0)>0);
+  const goiPeopleAll=mem.filter(p=>(p.skills['goihop']||0)>0); // gồm cả 👑
+  const canTwoTeam=goiPeopleAll.length>=2;
+  const maxTeams=Math.max(1,Math.min(+((S.config&&S.config.goiTeams)||2), goiPeopleAll.length)); // số đội gói tối đa (mặc định 2 = chính+phụ), không quá số người biết vào hộp
+  const goiCap=(DAYFLOW_NEW&&canTwoTeam)?maxTeams:1; // nhiều đội (chính + phụ...) phá nút thắt; 1 = một đội (kiểu cũ)
+  const sim=simWave(mem,chartN,null,crabPool,usePins?pins:null,avail,goiCap); const bnK=sim.bnK; const mk=sim.makespan; const clk=m=>clockOf(ca,m);
   // so sánh đơn LÀM ĐƯỢC TRONG CA: bản phân tay vs tự động
   let pinCmp='';
-  if(usePins){ const within=pp=>simWave(mem,chartN,shiftMin,crabPool,pp,avail).doneOrders;
+  if(usePins){ const within=pp=>simWave(mem,chartN,shiftMin,crabPool,pp,avail,goiCap).doneOrders;
     const aOrd=within(null), mOrd=within(pins); const diff=mOrd-aOrd;
     pinCmp=`<div class="advnote" style="background:#eef6ff;border-color:#bcdcff;color:#1d4e89">✋ <b>Bản PHÂN TAY của bạn</b> ${diff>0?'<b style="color:#0f6e56">TỐT HƠN tự động 👍</b>':(diff<0?'<b style="color:#c0392b">KÉM HƠN tự động</b>':'ngang bản tự động')} → <b style="color:${diff>=0?'#0f6e56':'#c0392b'}">${diff>=0?'+':''}${diff} đơn</b>. <span style="font-weight:400">(đơn hoàn tất trọn 7 khâu trong giờ ca: phân tay ${mOrd} · tự động ${aOrd})</span></div>`;
   }
@@ -2511,15 +2532,16 @@ function wavePlaybook(cs,ca,ds){
   // Nút thắt chạy sớm (mô hình MỚI) => coi dây chuyền mồi sớm hơn ~1h => tới mốc đã có nhiều đơn để tít hơn.
   const caStartMin=(()=>{ const def=ca==='Chiều'?'13:30':'07:30'; const s=String((S.config&&(ca==='Chiều'?S.config.caStartChieu:S.config.caStartSang))||def).split(':'); return (+s[0]||0)*60+(+s[1]||0); })();
   const mForClk=(h,mm)=>Math.max(0,Math.min(shiftMin,(h*60+mm)-caStartMin));
-  const titMarks=(ca==='Chiều'?[[15,0],[17,30]]:[[11,30]]).map(([h,mm])=>({h,mm,m:mForClk(h,mm)}));
+  // Mốc tít CỐ ĐỊNH theo thực tế kho: Sáng 10h20 · Chiều 15h & 17h30 (tổng 3 mốc/ngày)
+  const titMarks=(ca==='Chiều'?[[15,0],[17,30]]:[[10,20]]).map(([h,mm])=>({h,mm,m:mForClk(h,mm)}));
   const _nb=mem.filter(p=>!p.boss); const _sk=p=>S.stages.reduce((a,s)=>a+(p.skills[s.key]||0),0);
   const _idle=_nb.filter(p=>!(sim.blocks[p.id]||[]).length);
   const titer=(_idle.length?_idle:_nb).slice().sort((a,b)=>_sk(a)-_sk(b))[0]||null; // rảnh / yếu nhất
   const cutBusy=!_idle.length; // team kín việc -> nên thêm 1 người hỗ trợ tít
   let titLines=[];
   if(titer && (sim.progOut||[]).length && mk>=20){
-    const pr=sim.progOut, warmShift=DAYFLOW_NEW?60:0;
-    const readyAt=m=>{let i=Math.min(Math.round(m)+warmShift,pr.length-1);while(i>0&&pr[i]==null)i--;return Math.round(pr[i]||0);};
+    const pr=sim.progOut; // số tít mỗi mốc lấy thẳng từ mô phỏng (đã phản ánh 1 hay nhiều đội gói theo nút mô hình)
+    const readyAt=m=>{let i=Math.min(Math.round(m),pr.length-1);while(i>0&&pr[i]==null)i--;return Math.round(pr[i]||0);};
     const titRate=(titer.skills&&titer.skills['tit'])||Math.max(FLOOR_RATE,Math.round((S.stages.find(s=>s.key==='tit')||{rate:385}).rate*0.3));
     mem.forEach(p=>{ if(sim.blocks[p.id]) sim.blocks[p.id]=sim.blocks[p.id].filter(b=>b.k!=='tit'); }); // gỡ tít rải rác -> chỉ 1 người tít theo lô
     let prevR=0;
@@ -2531,7 +2553,13 @@ function wavePlaybook(cs,ca,ds){
   const titMarkLine = titer && titLines.length
     ? `<div class="wstep" style="font-size:12.5px;background:#fff5f8;border:1px solid #f0c8da;margin-top:4px">🏷️ <b>Chốt Tít trong ca</b> — 1 người tự chọn: <b>${esc(titer.name)}</b> → ${titLines.map(x=>`<b>${x.clk}</b> tít ~<b>${x.batch}</b> đơn`).join(' &nbsp;·&nbsp; ')}. <span class="hint">Máy tự tính số theo năng lực hôm nay — anh đếm Tít thực tế rồi so: thấp hơn = đang chậm.${cutBusy?' <b style="color:#c0392b">Team kín việc → nên thêm 1 người hỗ trợ tít.</b>':''}</span></div>`
     : '';
-  const modelSw = `<div class="wstep" style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:12.5px;background:#eef4ff;border:1px solid #cfe0ff;margin-top:4px"><b>Mô hình dòng chảy:</b><label class="mdsw" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" ${DAYFLOW_NEW?'checked':''} onchange="toggleWaveModel()"> <span>${DAYFLOW_NEW?'⚡ MỚI — nút thắt chạy sớm':'Cũ — dồn đệm cuối ca'}</span></label><span class="hint">Công tắc bật/tắt để so sánh: mô hình mới coi dây chuyền mồi sớm hơn → số Tít mỗi mốc cao hơn.</span></div>`;
+  const nGoi=goiPeopleAll.length; const goiOn=DAYFLOW_NEW&&canTwoTeam;
+  const modelSw = `<div class="wstep" style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:12.5px;background:#eef4ff;border:1px solid #cfe0ff;margin-top:4px"><b>🎁 Vào hộp:</b><label class="mdsw" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" ${DAYFLOW_NEW?'checked':''} ${canTwoTeam?'':'disabled'} onchange="toggleWaveModel()"> <span>${goiOn?'⚡ '+maxTeams+' ĐỘI gói song song (thực tế)':(canTwoTeam?'1 đội gói (kiểu cũ)':'1 đội gói — chỉ '+nGoi+' người biết vào hộp')}</span></label><span class="hint">${canTwoTeam?'Công tắc so sánh: '+maxTeams+' đội (chính + phụ) phá nút thắt → đơn ra sớm, tít nhiều hơn từ 10h20. Bỏ tích để xem kiểu 1 đội cũ.':'<b style="color:#c0392b">Chỉ &lt;2 người biết vào hộp → không mở được đội phụ, nút thắt nặng. Nên đào tạo thêm người vào hộp.</b>'}</span></div>`;
+  const goiInfo = goiOn ? `<div class="wstep" style="font-size:12px;background:#f3fbf6;border:1px solid #bfe6cf;margin-top:4px">🎁 <b>${nGoi} người biết vào hộp</b> → chạy <b>${maxTeams} đội gói song song</b> (đội chính mở khi có hàng bọc xóc, đội phụ mở thêm khi hàng chờ dồn nhiều): ${goiPeopleAll.map(p=>esc(p.name)+(p.boss?' 👑':'')).join(', ')}.</div>` : '';
+  // ⏱️ Giờ đóng ca mục tiêu theo thực tế: Sáng 12h15 · Chiều 18h
+  const closeNote=(()=>{ const tgtH=ca==='Chiều'?18:12, tgtM=ca==='Chiều'?0:15; const tgtMin=mForClk(tgtH,tgtM); const overC=mk>tgtMin+1;
+    return `<div class="wstep" style="font-size:12px;margin-top:3px;color:${overC?'#c0392b':'#0f6e56'}">⏱️ Xong ${chartN} đơn ~<b>${clk(mk)}</b> · mục tiêu đóng ca <b>${tgtH}h${tgtM<10?'0'+tgtM:tgtM}</b> → ${overC?`<b>trễ ~${Math.round(mk-tgtMin)}′</b>, cần bù người/OT`:'<b>kịp</b>'}.</div>`;
+  })();
   const gantt=waveGantt(mem,sim,ca,shiftMin);
   // ⏱️ TIẾN ĐỘ RA ĐƠN THEO GIỜ (mốc kiểm tra) — đơn đã qua khâu nghẽn ≈ gần hoàn thành
   const progTbl=(()=>{ const pd=sim.progOut||[]; if(!pd.length||mk<20)return '';
@@ -2674,7 +2702,7 @@ function wavePlaybook(cs,ca,ds){
     earlySec+
     `<details class="pinsec"${usePins?' open':''}><summary>✋ Phân tay — tự ghim người vào khâu</summary>${pinPanel}</details>`+
     `<div class="wstep" style="font-size:13px">🎯 ${need} đơn · chỉ tiêu ~<b>${targetR} đơn/h</b> · nút thắt <b>${stN(bnK)}</b> 🔴 (dồn người mạnh nhất, kể cả 👑, vào đây).${gapWarn('xacnhan')}</div>`+
-    modelSw+ titMarkLine+
+    modelSw+ goiInfo+ titMarkLine+ closeNote+
     `<div class="wstep" style="opacity:.75;margin-top:3px">▼ Biểu đồ thời gian trong ca — mỗi người 1 dòng, màu = khâu, mốc 15 phút; khối <b>✅ Tít</b> = lô chốt tại mốc:</div>`+
     gantt+ gapLines+
     `<details style="margin-top:6px" open><summary style="font-size:12.5px;cursor:pointer;color:var(--brand);font-weight:700">▸ Cách điều phối người (đọc là hiểu quy trình)</summary>${coordTxt}`+
@@ -3075,6 +3103,12 @@ function renderAll(){
   const bon=document.getElementById('cf-boss-on'); if(bon)bon.checked=S.config.bossEnabled!==false;
   const bnm=document.getElementById('cf-boss-name'); if(bnm)bnm.value=S.config.bossName||'Bùi Thanh Huyền';
   const bth=document.getElementById('cf-boss-thr'); if(bth)bth.value=S.config.bossGap!=null?S.config.bossGap:50;
+  const won=document.getElementById('cf-warm-on'); if(won)won.checked=S.config.warmupOn!==false;
+  const wst=document.getElementById('cf-warm-start'); if(wst)wst.value=S.config.warmupStartPct!=null?S.config.warmupStartPct:65;
+  const wmn=document.getElementById('cf-warm-min'); if(wmn)wmn.value=S.config.warmupMin!=null?S.config.warmupMin:45;
+  const fon=document.getElementById('cf-fat-on'); if(fon)fon.checked=S.config.fatigueOn!==false;
+  const fpc=document.getElementById('cf-fat-pct'); if(fpc)fpc.value=S.config.fatiguePct!=null?S.config.fatiguePct:4.5;
+  const gtm=document.getElementById('cf-goi-teams'); if(gtm)gtm.value=S.config.goiTeams!=null?S.config.goiTeams:2;
   fillMonthSelect();renderSkillMatrix();renderStageRates();renderDemand();renderDayOrders();renderAccounts();renderEval();
   populateUserStaff();renderReg();updateNavBadge();
 }
