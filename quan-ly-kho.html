@@ -635,7 +635,7 @@
    Xem file "HƯỚNG DẪN CÀI CLOUD.md". Để TRỐNG = lưu cục bộ trên máy.
    ================================================================ */
 const VERSION = "3.3"; // hiển thị cho người dùng (chuyên nghiệp), bump khi cập nhật lớn
-const BUILD = "v2026.06.10-100 (Hệ số KHỞI ĐỘNG CA (mặc định 65%→100% sau 45', theo giờ vào từng người) + giới hạn SỐ ĐỘI GÓI đúng thực tế (mặc định 2 = chính+phụ, chỉnh 1-5 ở Cài đặt) → giờ ra đơn & tít sát thực tế; cạnh hệ số mệt mỏi)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
+const BUILD = "v2026.06.10-101 (Mở sẵn mục 🌅 Giờ vào sớm 7h30 trong kịch bản ca Sáng để dễ thấy — tích người vào sớm, phần mềm tự tính lại phân bổ. Kèm hệ số khởi động ca + số đội gói)"; // ghi chú nội bộ // ĐỔI mỗi lần cập nhật để biết web đang chạy bản nào
 const SUPABASE_URL = "https://xlebkbnoaeqcoxlzorcw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_U97TqdsU1F_MyOReIL6F7w_RjVuq_rG";
 
@@ -2693,7 +2693,7 @@ function wavePlaybook(cs,ca,ds){
   let earlySec='';
   if(ca==='Sáng'){ const early=(S.earlyShift&&S.earlyShift[ds])||[];
     const rows=mem.filter(p=>!p.boss).map(p=>`<label style="display:inline-flex;align-items:center;gap:5px;margin:3px 12px 3px 0;font-size:12px;cursor:pointer"><input type="checkbox" ${early.includes(p.id)?'checked':''} onchange="setEarly('${ds||''}','${p.id}',this.checked)"> ${esc(p.name)}</label>`).join('');
-    earlySec=`<details class="pinsec"${early.length?' open':''}><summary>🌅 Giờ vào sớm 7h30 (xử lý đơn tồn đêm)</summary><div style="padding:8px 2px 2px"><div style="font-size:12px;color:#444;margin-bottom:6px">Chọn ai vào sớm <b>7h30</b> (xác nhận + nhặt đơn tồn từ đêm); số còn lại vào <b>8h30</b>. Thường 1 full-time + 1 part-time (xoay vòng). Kịch bản &amp; biểu đồ sẽ chạy lại theo giờ vào lệch.</div>${rows}</div></details>`;
+    earlySec=`<details class="pinsec" open><summary>🌅 Giờ vào sớm 7h30 — tích người vào sớm (phần mềm tự tính lại phân bổ)</summary><div style="padding:8px 2px 2px"><div style="font-size:12px;color:#444;margin-bottom:6px">Chọn ai vào sớm <b>7h30</b> (xác nhận + nhặt đơn tồn từ đêm); số còn lại vào <b>8h30</b>. Thường 1 full-time + 1 part-time (xoay vòng). Kịch bản &amp; biểu đồ sẽ chạy lại theo giờ vào lệch.</div>${rows||'<span class="hint">Chưa có nhân sự nào trong ca này.</span>'}</div></details>`;
   }
   return `<div class="waveFull">`+
     pinCmp+
